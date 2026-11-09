@@ -1,48 +1,48 @@
-"""Pydantic data models for ETL extraction, chunking, and benchmarking."""
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+"""Pydantic data models for vector ETL segments, chunks, and metadata."""
+from datetime import date
+from typing import Optional, Dict, Union, Literal
+from pydantic import BaseModel, Field, field_validator
+from ..config import DEPARTMENTS, TIERS
 
 
-class DocumentMetadata(BaseModel):
-    """Normalized metadata attached to every document and chunk."""
-    department: str = Field(..., description="Corporate department, e.g. Engineering, Finance, Legal")
-    clearance_tier: int = Field(..., ge=1, le=4, description="Clearance level: 1=Public, 2=Internal, 3=Confidential, 4=Secret")
-    document_date: str = Field(..., description="ISO 8601 date, e.g. '2026-10-15'")
-    source_file: str = Field(..., description="Filename of the source document")
-    file_type: str = Field(..., description="File format extension: pdf, csv, md, txt, json")
-    page_number: Optional[int] = Field(None, description="Page number for multi-page documents (PDFs)")
-    row_id: Optional[int] = Field(None, description="Row index for tabular data (CSVs)")
-    section_title: Optional[str] = Field(None, description="Markdown/document section heading")
-    extra: Dict[str, Any] = Field(default_factory=dict, description="Custom domain-specific attributes")
-
-    def to_chroma_dict(self) -> Dict[str, Any]:
-        """Convert metadata to flat dictionary compatible with ChromaDB constraints."""
-        flat = {
-            "department": self.department,
-            "clearance_tier": int(self.clearance_tier),
-            "document_date": self.document_date,
-            "source_file": self.source_file,
-            "file_type": self.file_type,
-        }
-        if self.page_number is not None:
-            flat["page_number"] = int(self.page_number)
-        if self.row_id is not None:
-            flat["row_id"] = int(self.row_id)
-        if self.section_title is not None:
-            flat["section_title"] = str(self.section_title)
-        for k, v in self.extra.items():
-            if isinstance(v, (str, int, float, bool)):
-                flat[f"extra_{k}"] = v
-            else:
-                flat[f"extra_{k}"] = str(v)
-        return flat
+class Segment(BaseModel):
+    """A citation-preserving unit of extracted text from a source document."""
+    text: str
+    page_number: Optional[int] = None
+    row_id: Optional[int] = None
+    section_title: Optional[str] = None
 
 
-class RawDocument(BaseModel):
-    """Intermediate extracted representation of a raw client document."""
-    document_id: str
-    content: str
-    metadata: DocumentMetadata
+class ManifestEntry(BaseModel):
+    """Metadata resolved for a document from manifest.yaml or filename fallback."""
+    department: str
+    clearance_tier: int
+    document_date: str
+    metadata_source: Literal["manifest", "filename"]
+
+    @field_validator("department")
+    @classmethod
+    def validate_dept(cls, v: str) -> str:
+        dept = v.lower()
+        if dept not in DEPARTMENTS:
+            raise ValueError(f"Unknown department '{v}'. Must be one of {sorted(list(DEPARTMENTS))}")
+        return dept
+
+    @field_validator("clearance_tier")
+    @classmethod
+    def validate_tier(cls, v: int) -> int:
+        if v not in TIERS:
+            raise ValueError(f"Invalid clearance tier {v}. Must be in {TIERS}")
+        return v
+
+    @field_validator("document_date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        try:
+            date.fromisoformat(v)
+        except Exception:
+            raise ValueError(f"Invalid ISO date '{v}'. Expected YYYY-MM-DD format.")
+        return v
 
 
 class DocumentChunk(BaseModel):
@@ -50,33 +50,57 @@ class DocumentChunk(BaseModel):
     chunk_id: str
     document_id: str
     text: str
-    metadata: DocumentMetadata
-    token_count: int
+    department: str
+    clearance_tier: int
+    document_date: str
+    source_file: str
+    file_type: str
     chunk_index: int
-    total_chunks: int = 1
+    page_number: Optional[int] = None
+    row_id: Optional[int] = None
+    section_title: Optional[str] = None
+    token_count: Optional[int] = None
+
+    @field_validator("department")
+    @classmethod
+    def validate_dept(cls, v: str) -> str:
+        dept = v.lower()
+        if dept not in DEPARTMENTS:
+            raise ValueError(f"Unknown department '{v}'. Must be one of {sorted(list(DEPARTMENTS))}")
+        return dept
+
+    @field_validator("clearance_tier")
+    @classmethod
+    def validate_tier(cls, v: int) -> int:
+        if v not in TIERS:
+            raise ValueError(f"Invalid clearance tier {v}. Must be in {TIERS}")
+        return v
+
+    @field_validator("document_date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        try:
+            date.fromisoformat(v)
+        except Exception:
+            raise ValueError(f"Invalid ISO date '{v}'. Expected YYYY-MM-DD format.")
+        return v
 
 
-class IngestionResult(BaseModel):
-    """Summary of an ETL pipeline execution."""
-    total_files_discovered: int
-    total_documents_extracted: int
-    total_chunks_created: int
-    collection_name: str
-    duration_seconds: float
-    throughput_chunks_per_sec: float
-    errors: List[str] = Field(default_factory=list)
+def to_chroma_metadata(chunk: DocumentChunk) -> Dict[str, Union[str, int, float, bool]]:
+    """
+    Convert a DocumentChunk to ChromaDB-safe flat metadata:
+    - Excludes 'text'
+    - Omits every key whose value is None (ChromaDB rejects None values)
+    """
+    raw_dict = chunk.model_dump()
+    raw_dict.pop("text", None)
 
+    chroma_meta: Dict[str, Union[str, int, float, bool]] = {}
+    for k, v in raw_dict.items():
+        if v is not None:
+            if isinstance(v, (str, int, float, bool)):
+                chroma_meta[k] = v
+            else:
+                chroma_meta[k] = str(v)
 
-class BenchmarkResult(BaseModel):
-    """Performance metrics for batch ETL ingestion and vector queries."""
-    num_documents: int
-    num_chunks: int
-    total_tokens: int
-    extraction_time_ms: float
-    chunking_time_ms: float
-    indexing_time_ms: float
-    total_time_ms: float
-    throughput_docs_per_sec: float
-    throughput_chunks_per_sec: float
-    query_latency_ms: Dict[str, float]  # mean, p50, p95, p99
-
+    return chroma_meta
