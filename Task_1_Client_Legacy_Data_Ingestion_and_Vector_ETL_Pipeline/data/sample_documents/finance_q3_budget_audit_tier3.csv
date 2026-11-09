@@ -1,0 +1,9 @@
+tx_id,department,vendor,description,amount_usd,approval_tier,date,status
+TX-901,Engineering,AWS Cloud Infrastructure,GPU Cluster H100 Training Reservation,450000,Tier 3,2026-07-15,Approved
+TX-902,Finance,Deloitte Advisory,Annual Enterprise Tax & Transfer Pricing Audit,125000,Tier 3,2026-08-01,Approved
+TX-903,Legal,Latham & Watkins LLP,Cross-Border Patent Filing & M&A Due Diligence,210000,Tier 3,2026-08-20,Approved
+TX-904,Executive,Gartner Research,Annual Strategic Advisory & Market Quadrant Access,85000,Tier 3,2026-09-02,Approved
+TX-905,HR,Korn Ferry International,Executive Search & VP Engineering Retainer,65000,Tier 3,2026-09-15,Approved
+TX-906,Engineering,Anthropic PBC,Commercial Model Inference API Licensing Q3,320000,Tier 3,2026-09-30,Approved
+TX-907,Operations,Equinix Data Centers,Tier IV Private Colo Rack Hosting & Power,95000,Tier 3,2026-10-05,Approved
+TX-908,Engineering,Snowflake Inc,Enterprise Data Warehouse Compute Credits,140000,Tier 3,2026-10-18,Approved

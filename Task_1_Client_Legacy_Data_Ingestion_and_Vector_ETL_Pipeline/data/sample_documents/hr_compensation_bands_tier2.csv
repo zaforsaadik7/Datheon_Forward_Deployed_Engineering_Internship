@@ -1,0 +1,8 @@
+role_id,title,department,level,min_base_usd,max_base_usd,target_bonus_pct,clearance_tier
+ENG-L4,Software Engineer II,Engineering,IC-4,140000,175000,15,Tier 2
+ENG-L5,Senior Forward Deployed Engineer,Engineering,IC-5,185000,230000,20,Tier 2
+ENG-L6,Staff AI Systems Architect,Engineering,IC-6,240000,310000,25,Tier 2
+FIN-L3,Senior Financial Analyst,Finance,IC-3,115000,145000,15,Tier 2
+FIN-L5,Finance Director - Corp Planning,Finance,M-5,190000,245000,25,Tier 2
+LEG-L4,Corporate Legal Counsel,Legal,IC-4,165000,210000,20,Tier 2
+HR-L3,Senior Talent Partner,HR,IC-3,105000,135000,12,Tier 2

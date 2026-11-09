@@ -1,0 +1,17 @@
+CONFIDENTIAL RESTRICTED INTELLECTUAL PROPERTY CROSS-LICENSE AGREEMENT
+Document Reference: TIER-4-LEGAL-IP-2026-77
+Effective Date: July 4, 2026
+Governing Parties: Datheon Corporation ('Licensor') and Project Titan Consortium ('Licensee')
+Clearance Tier: Tier 4 - Secret / Board Restricted
+
+1. GRANT OF RESTRICTED TECHNOLOGY RIGHTS
+Licensor grants Licensee a worldwide, non-exclusive, irrevocable commercial license to utilize proprietary
+Vector ETL chunking heuristics and Multi-Tenant Role-Based Access Control algorithms (Patents US-2026-091823-A1).
+
+2. ROYALTIES AND MINIMUM COMMITMENT
+Licensee shall pay an annual recurring royalty of ,500,000 USD net thirty (30) days from anniversary.
+Late payments accrue statutory interest at 1.5% per month compounded daily.
+
+3. DISPUTE RESOLUTION AND JURISDICTION
+Any dispute, controversy, or claim arising out of this Agreement shall be settled by confidential arbitration
+administered by JAMS in San Francisco, California under Delaware corporate law.

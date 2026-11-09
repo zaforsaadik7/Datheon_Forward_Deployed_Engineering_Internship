@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "catalog_version": "2026.3.1",
+    "department": "Operations",
+    "clearance_tier": 1,
+    "effective_date": "2026-03-01"
+  },
+  "approved_suppliers": [
+    {
+      "id": "SUP-01",
+      "name": "Apex Hardware Logistics",
+      "category": "Server Racks",
+      "sla": "99.9%",
+      "contact": "support@apexhardware.com"
+    },
+    {
+      "id": "SUP-02",
+      "name": "FiberLink Global",
+      "category": "Dark Fiber Connectivity",
+      "sla": "99.99%",
+      "contact": "noc@fiberlink.net"
+    },
+    {
+      "id": "SUP-03",
+      "name": "CyberVault Backup Solutions",
+      "category": "Cold Storage Media",
+      "sla": "99.95%",
+      "contact": "enterprise@cybervault.io"
+    }
+  ]
+}
