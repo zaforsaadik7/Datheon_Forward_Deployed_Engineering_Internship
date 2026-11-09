@@ -185,3 +185,102 @@ def test_markdown_segment_text_starts_with_title(tmp_path: Path):
 
     assert len(segments) == 1
     assert segments[0].text.startswith("Overview\n\nWelcome to Datheon.")
+
+
+# --- CSV Extractor Tests ---
+from src.etl.extractors.csv_extractor import CsvExtractor
+
+
+def test_csv_row_serialization(tmp_path: Path):
+    content = 'Department,Q3 Spend,Vendor\nFinance,"$450,000",Acme Cloud\n'
+    file_path = tmp_path / "budget.csv"
+    file_path.write_text(content, encoding="utf-8")
+
+    extractor = CsvExtractor()
+    segments = extractor.extract(file_path)
+
+    assert len(segments) == 1
+    assert segments[0].row_id == 2
+    assert segments[0].text == 'Record [Row 2]: Department=Finance, Q3 Spend=$450,000, Vendor=Acme Cloud'
+
+
+def test_csv_bom_and_cp1252(tmp_path: Path):
+    # UTF-8 BOM
+    p1 = tmp_path / "bom.csv"
+    p1.write_bytes(b'\xef\xbb\xbfName,Salary\nAlice,1000\n')
+    # CP1252 with euro symbol
+    p2 = tmp_path / "cp.csv"
+    p2.write_bytes("Name,Bonus\nRené,500 €\n".encode("cp1252"))
+
+    extractor = CsvExtractor()
+    s1 = extractor.extract(p1)
+    s2 = extractor.extract(p2)
+
+    assert len(s1) == 1
+    assert "Alice" in s1[0].text
+    assert len(s2) == 1
+    assert "René" in s2[0].text
+    assert "500 €" in s2[0].text
+
+
+def test_csv_blank_rows_skipped_row_ids_keep_gaps(tmp_path: Path):
+    content = "A,B\nVal1,Val2\n\nVal3,Val4\n"
+    file_path = tmp_path / "blanks.csv"
+    file_path.write_text(content, encoding="utf-8")
+
+    extractor = CsvExtractor()
+    segments = extractor.extract(file_path)
+
+    assert len(segments) == 2
+    assert segments[0].row_id == 2
+    assert segments[1].row_id == 4
+
+
+def test_csv_ragged_rows_do_not_crash(tmp_path: Path):
+    content = "H1,H2,H3\nA\nB,C,D,E,F\n"
+    file_path = tmp_path / "ragged.csv"
+    file_path.write_text(content, encoding="utf-8")
+
+    extractor = CsvExtractor()
+    segments = extractor.extract(file_path)
+
+    assert len(segments) == 2
+    assert segments[0].text == "Record [Row 2]: H1=A"
+    assert "H1=B" in segments[1].text
+    assert "extra_1=E" in segments[1].text
+    assert "extra_2=F" in segments[1].text
+
+
+def test_csv_repeated_header_row_skipped(tmp_path: Path):
+    content = "H1,H2\nA,B\nH1,H2\nC,D\n"
+    file_path = tmp_path / "repeat.csv"
+    file_path.write_text(content, encoding="utf-8")
+
+    extractor = CsvExtractor()
+    segments = extractor.extract(file_path)
+
+    assert len(segments) == 2
+    assert segments[0].row_id == 2
+    assert segments[1].row_id == 4
+
+
+def test_csv_multiline_quoted_cell(tmp_path: Path):
+    content = 'ID,Note\n1,"Line one\nLine two"\n'
+    file_path = tmp_path / "multiline.csv"
+    file_path.write_text(content, encoding="utf-8")
+
+    extractor = CsvExtractor()
+    segments = extractor.extract(file_path)
+
+    assert len(segments) == 1
+    assert "Line one\nLine two" in segments[0].text
+
+
+def test_csv_header_only_raises(tmp_path: Path):
+    content = "H1,H2,H3\n"
+    file_path = tmp_path / "header_only.csv"
+    file_path.write_text(content, encoding="utf-8")
+
+    extractor = CsvExtractor()
+    with pytest.raises(ExtractionError):
+        extractor.extract(file_path)

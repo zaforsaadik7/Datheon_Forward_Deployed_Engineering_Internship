@@ -1,82 +1,64 @@
-"""Tabular CSV extractor converting structured corporate rows into semantic units."""
+"""CSV extractor converting rows into citation-preserving segments."""
 import csv
+import io
 from pathlib import Path
-from typing import List, Dict, Any
-from .base import BaseExtractor
-from ..models import RawDocument, DocumentMetadata
+from typing import ClassVar, List
+from .base import BaseExtractor, ExtractionError
+from .text_extractor import read_text_file
+from ..models import Segment
 
 
-class CSVExtractor(BaseExtractor):
+class CsvExtractor(BaseExtractor):
     """
-    Extracts tabular enterprise CSVs and converts each row into a semantically
-    rich narrative document, preserving column headers and row indices.
+    Extracts tabular enterprise CSVs. Each non-blank row becomes a Segment
+    with exact spreadsheet row_id (1-indexed, header is row 1).
     """
+    file_type: ClassVar[str] = "csv"
 
-    def extract(self, file_path: Path) -> List[RawDocument]:
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"CSV file not found: {file_path}")
+    def extract(self, path: Path) -> List[Segment]:
+        raw_text = read_text_file(path)
+        if not raw_text:
+            raise ExtractionError(f"File '{path.name}' contains no extractable text.")
 
-        extracted_docs: List[RawDocument] = []
-        base_dept, base_tier, base_date = self.infer_metadata(file_path)
+        reader = csv.reader(io.StringIO(raw_text))
+        header: List[str] = []
+        segments: List[Segment] = []
 
-        with open(file_path, mode="r", encoding="utf-8", errors="replace") as f:
-            reader = csv.DictReader(f)
-            headers = reader.fieldnames or []
+        for row_idx, row in enumerate(reader, start=1):
+            stripped_cells = [cell.strip() for cell in row]
 
-            for row_idx, row in enumerate(reader, start=1):
-                # Clean row values
-                cleaned_row = {k.strip(): (v.strip() if v else "") for k, v in row.items() if k}
-                if not any(cleaned_row.values()):
+            # Row 1 is header
+            if row_idx == 1:
+                header = stripped_cells
+                continue
+
+            # Skip empty rows (blank line)
+            if not any(stripped_cells):
+                continue
+
+            # Skip repeated header row
+            if stripped_cells == header:
+                continue
+
+            # Format fields
+            fields: List[str] = []
+            for col_idx, cell_val in enumerate(stripped_cells):
+                if not cell_val:
                     continue
+                if col_idx < len(header) and header[col_idx]:
+                    col_name = header[col_idx]
+                else:
+                    extra_num = col_idx - len(header) + 1
+                    col_name = f"extra_{extra_num}"
+                fields.append(f"{col_name}={cell_val}")
 
-                # Formulate semantic statement
-                field_strs = [f"{k}: {v}" for k, v in cleaned_row.items() if v]
-                narrative = (
-                    f"Corporate Record [Row {row_idx}] from '{file_path.name}':\n"
-                    + " | ".join(field_strs)
-                )
+            if not fields:
+                continue
 
-                # Check if row has row-level department or clearance overrides
-                row_dept = base_dept
-                row_tier = base_tier
-                row_date = base_date
+            segment_text = f"Record [Row {row_idx}]: " + ", ".join(fields)
+            segments.append(Segment(text=segment_text, row_id=row_idx))
 
-                for k, v in cleaned_row.items():
-                    k_lower = k.lower()
-                    v_lower = v.lower()
-                    if "department" in k_lower or "dept" in k_lower:
-                        if v.strip():
-                            row_dept = v.strip()
-                    elif "tier" in k_lower or "clearance" in k_lower:
-                        if "4" in v_lower or "secret" in v_lower:
-                            row_tier = 4
-                        elif "3" in v_lower or "confidential" in v_lower:
-                            row_tier = 3
-                        elif "1" in v_lower or "public" in v_lower:
-                            row_tier = 1
-                        elif "2" in v_lower or "internal" in v_lower:
-                            row_tier = 2
-                    elif "date" in k_lower and len(v.strip()) == 10 and "-" in v:
-                        row_date = v.strip()
+        if not segments:
+            raise ExtractionError(f"File '{path.name}' contains no extractable data rows.")
 
-                metadata = DocumentMetadata(
-                    department=row_dept,
-                    clearance_tier=row_tier,
-                    document_date=row_date,
-                    source_file=file_path.name,
-                    file_type="csv",
-                    row_id=row_idx,
-                    extra={k: v for k, v in cleaned_row.items() if len(str(v)) < 100}
-                )
-
-                doc_id = f"{file_path.stem}_row{row_idx}"
-                extracted_docs.append(
-                    RawDocument(
-                        document_id=doc_id,
-                        content=narrative,
-                        metadata=metadata
-                    )
-                )
-
-        return extracted_docs
+        return segments
