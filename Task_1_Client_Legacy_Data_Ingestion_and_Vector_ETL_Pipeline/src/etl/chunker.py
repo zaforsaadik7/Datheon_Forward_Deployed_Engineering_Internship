@@ -1,159 +1,147 @@
-"""Semantic and recursive boundary chunker with metadata propagation."""
+"""Recursive semantic text chunker and chunk assembly."""
 import hashlib
-import re
-from typing import List
-from .models import RawDocument, DocumentChunk, DocumentMetadata
-from ..config import settings
+from typing import List, Optional
+from .models import Segment, ManifestEntry, DocumentChunk
+
+SEPARATORS = ["\n\n", "\n", ". ", " "]
 
 
-class SemanticChunker:
+def estimate_tokens(text: str) -> int:
+    """Token count heuristic: max(1, len(text) // 4)."""
+    return max(1, len(text) // 4)
+
+
+def _split_into_pieces(text: str, sep_idx: int, max_piece_len: int) -> List[str]:
+    """Recursively split text using the hierarchy of separators."""
+    if len(text) <= max_piece_len:
+        return [text]
+
+    if sep_idx >= len(SEPARATORS):
+        # Hard cut with stride max_piece_len
+        return [text[i : i + max_piece_len] for i in range(0, len(text), max_piece_len)]
+
+    sep = SEPARATORS[sep_idx]
+    if sep not in text:
+        return _split_into_pieces(text, sep_idx + 1, max_piece_len)
+
+    raw_parts = text.split(sep)
+    pieces: List[str] = []
+
+    for i, part in enumerate(raw_parts):
+        # Re-attach separator except for the last part
+        p_with_sep = part + sep if i < len(raw_parts) - 1 else part
+        if not p_with_sep:
+            continue
+        if len(p_with_sep) <= max_piece_len:
+            pieces.append(p_with_sep)
+        else:
+            pieces.extend(_split_into_pieces(p_with_sep, sep_idx + 1, max_piece_len))
+
+    return pieces
+
+
+def chunk_text(text: str, chunk_size: int = 900, overlap: int = 120) -> List[str]:
     """
-    Splits documents into overlapping chunks using natural semantic boundaries
-    (paragraphs, sentences) while guaranteeing metadata propagation and deterministic IDs.
+    Split text recursively on paragraphs, lines, sentences, or words.
+    Guarantees that every chunk is <= chunk_size characters.
     """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap >= chunk_size:
+        raise ValueError("overlap must be strictly less than chunk_size")
 
-    def __init__(
-        self,
-        chunk_size: int = settings.DEFAULT_CHUNK_SIZE,
-        chunk_overlap: int = settings.DEFAULT_CHUNK_OVERLAP,
-        min_chunk_size: int = settings.MIN_CHUNK_SIZE,
-    ):
-        if chunk_overlap >= chunk_size:
-            raise ValueError("chunk_overlap must be strictly less than chunk_size")
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.min_chunk_size = min_chunk_size
+    stripped = text.strip()
+    if not stripped:
+        return []
 
-    def chunk_document(self, document: RawDocument) -> List[DocumentChunk]:
-        """Split a single RawDocument into multiple DocumentChunks."""
-        text = document.content.strip()
-        if not text:
-            return []
+    if len(stripped) <= chunk_size:
+        return [stripped]
 
-        # If document is already small enough, treat as a single chunk
-        if len(text) <= self.chunk_size:
-            chunk_id = self._generate_chunk_id(document.document_id, 0, text)
-            return [
+    # Target window budget for packing pieces
+    budget = chunk_size - overlap
+    pieces = _split_into_pieces(stripped, 0, budget)
+
+    # Greedily pack pieces into windows
+    windows: List[str] = []
+    cur_pieces: List[str] = []
+    cur_len = 0
+
+    for piece in pieces:
+        p_len = len(piece)
+        if cur_len + p_len <= budget:
+            cur_pieces.append(piece)
+            cur_len += p_len
+        else:
+            if cur_pieces:
+                windows.append("".join(cur_pieces))
+            cur_pieces = [piece]
+            cur_len = p_len
+
+    if cur_pieces:
+        windows.append("".join(cur_pieces))
+
+    # Overlap prefixing
+    chunks: List[str] = []
+    for idx, window in enumerate(windows):
+        if idx == 0:
+            chunks.append(window.strip())
+        else:
+            prev_window = windows[idx - 1]
+            overlap_text = prev_window[-overlap:]
+            # Trim forward to whitespace boundary if possible
+            first_space = overlap_text.find(" ")
+            if first_space != -1 and first_space < len(overlap_text) - 1:
+                overlap_prefix = overlap_text[first_space + 1 :]
+            else:
+                overlap_prefix = overlap_text
+
+            combined = (overlap_prefix + " " + window).strip()
+            # Safety clamp: if combined exceeds chunk_size, truncate to chunk_size
+            if len(combined) > chunk_size:
+                combined = combined[:chunk_size]
+            chunks.append(combined)
+
+    return chunks
+
+
+def build_chunks(
+    segments: List[Segment],
+    *,
+    document_id: str,
+    source_file: str,
+    file_type: str,
+    entry: ManifestEntry,
+    chunk_size: int = 900,
+    overlap: int = 120,
+) -> List[DocumentChunk]:
+    """
+    Assemble DocumentChunk objects from extracted Segments.
+    Segments are never merged across each other so that citations (page, row, sec) remain exact.
+    """
+    all_chunks: List[DocumentChunk] = []
+    chunk_idx = 0
+
+    for seg in segments:
+        text_chunks = chunk_text(seg.text, chunk_size=chunk_size, overlap=overlap)
+        for t in text_chunks:
+            chunk_id = hashlib.sha256(f"{document_id}|{chunk_idx}".encode("utf-8")).hexdigest()
+            all_chunks.append(
                 DocumentChunk(
                     chunk_id=chunk_id,
-                    document_id=document.document_id,
-                    text=text,
-                    metadata=document.metadata,
-                    token_count=max(1, len(text) // 4),
-                    chunk_index=0,
-                    total_chunks=1,
-                )
-            ]
-
-        # Recursive splitting into paragraphs, then sentences
-        raw_chunks = self._recursive_split(text)
-        merged_chunks = self._sliding_window_merge(raw_chunks)
-
-        total = len(merged_chunks)
-        chunks: List[DocumentChunk] = []
-
-        for idx, chunk_text in enumerate(merged_chunks):
-            chunk_id = self._generate_chunk_id(document.document_id, idx, chunk_text)
-            chunks.append(
-                DocumentChunk(
-                    chunk_id=chunk_id,
-                    document_id=document.document_id,
-                    text=chunk_text,
-                    metadata=document.metadata,
-                    token_count=max(1, len(chunk_text) // 4),
-                    chunk_index=idx,
-                    total_chunks=total,
+                    document_id=document_id,
+                    text=t,
+                    department=entry.department,
+                    clearance_tier=entry.clearance_tier,
+                    document_date=entry.document_date,
+                    source_file=source_file,
+                    file_type=file_type,
+                    chunk_index=chunk_idx,
+                    page_number=seg.page_number,
+                    row_id=seg.row_id,
+                    section_title=seg.section_title,
+                    token_count=estimate_tokens(t),
                 )
             )
+            chunk_idx += 1
 
-        return chunks
-
-    def chunk_documents(self, documents: List[RawDocument]) -> List[DocumentChunk]:
-        """Process a list of RawDocuments into a consolidated list of DocumentChunks."""
-        all_chunks: List[DocumentChunk] = []
-        for doc in documents:
-            all_chunks.extend(self.chunk_document(doc))
-        return all_chunks
-
-    def _recursive_split(self, text: str) -> List[str]:
-        """Split text hierarchically by paragraphs, then sentences."""
-        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-        units: List[str] = []
-
-        for p in paragraphs:
-            if len(p) <= self.chunk_size:
-                units.append(p)
-            else:
-                # Split large paragraph by sentence
-                sentences = re.split(r"(?<=[.!?])\s+", p)
-                for s in sentences:
-                    s_clean = s.strip()
-                    if not s_clean:
-                        continue
-                    if len(s_clean) <= self.chunk_size:
-                        units.append(s_clean)
-                    else:
-                        # Split very long sentences by words
-                        words = s_clean.split(" ")
-                        cur_w = []
-                        cur_len = 0
-                        for w in words:
-                            if cur_len + len(w) + 1 > self.chunk_size and cur_w:
-                                units.append(" ".join(cur_w))
-                                cur_w = [w]
-                                cur_len = len(w)
-                            else:
-                                cur_w.append(w)
-                                cur_len += len(w) + 1
-                        if cur_w:
-                            units.append(" ".join(cur_w))
-        return units
-
-    def _sliding_window_merge(self, units: List[str]) -> List[str]:
-        """Merge textual units into target chunk sizes with overlap."""
-        chunks: List[str] = []
-        current_chunk: List[str] = []
-        current_length = 0
-
-        for unit in units:
-            unit_len = len(unit)
-            if current_length + unit_len + 1 <= self.chunk_size:
-                current_chunk.append(unit)
-                current_length += unit_len + 1
-            else:
-                if current_chunk:
-                    chunk_text = " ".join(current_chunk).strip()
-                    if len(chunk_text) >= self.min_chunk_size:
-                        chunks.append(chunk_text)
-
-                    # Compute overlap from trailing units
-                    overlap_units: List[str] = []
-                    overlap_len = 0
-                    for u in reversed(current_chunk):
-                        if overlap_len + len(u) + 1 <= self.chunk_overlap:
-                            overlap_units.insert(0, u)
-                            overlap_len += len(u) + 1
-                        else:
-                            break
-                    current_chunk = overlap_units + [unit]
-                    current_length = sum(len(u) + 1 for u in current_chunk)
-                else:
-                    chunks.append(unit)
-                    current_chunk = []
-                    current_length = 0
-
-        if current_chunk:
-            final_text = " ".join(current_chunk).strip()
-            if len(final_text) >= self.min_chunk_size:
-                chunks.append(final_text)
-
-        return chunks if chunks else units
-
-    @staticmethod
-    def _generate_chunk_id(doc_id: str, chunk_index: int, text: str) -> str:
-        """Create deterministic, collision-resistant hash ID."""
-        hasher = hashlib.sha256()
-        hasher.update(doc_id.encode("utf-8"))
-        hasher.update(str(chunk_index).encode("utf-8"))
-        hasher.update(text[:64].encode("utf-8"))
-        return f"{doc_id}_c{chunk_index}_{hasher.hexdigest()[:8]}"
+    return all_chunks
