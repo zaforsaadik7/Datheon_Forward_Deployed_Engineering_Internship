@@ -1,7 +1,75 @@
+import hashlib
+import math
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 import pytest
 import pymupdf
+import chromadb
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
+
+from src.etl.models import DocumentChunk
+from src.etl.vector_store import VectorStore
+
+
+class FakeEmbedding(EmbeddingFunction[Documents]):
+    """
+    Deterministic 16-dimension embedding function for testing.
+    Maps known texts to explicit vectors or hashes text to unit vectors.
+    """
+    def __init__(self, known_vectors: Optional[Dict[str, List[float]]] = None):
+        self.known_vectors = known_vectors or {}
+
+    def __call__(self, input: Documents) -> Embeddings:
+        embeddings: Embeddings = []
+        for text in input:
+            if text in self.known_vectors:
+                embeddings.append(self.known_vectors[text])
+            else:
+                # Deterministic 16-dim normalized vector
+                hasher = hashlib.md5(text.encode("utf-8")).digest()
+                raw = [float(b) for b in hasher[:16]]
+                norm = math.sqrt(sum(x * x for x in raw)) or 1.0
+                embeddings.append([x / norm for x in raw])
+        return embeddings
+
+
+@pytest.fixture
+def fake_embedder():
+    return FakeEmbedding()
+
+
+@pytest.fixture
+def tmp_store(tmp_path: Path):
+    embedder = FakeEmbedding()
+    store = VectorStore(
+        path=tmp_path / "test_chroma",
+        collection_name="test_collection",
+        embedding_function=embedder,
+    )
+    return store
+
+
+@pytest.fixture
+def chunk_factory():
+    def _create(**overrides):
+        defaults = {
+            "chunk_id": "test_chk_1",
+            "document_id": "doc1.txt",
+            "text": "Sample chunk content",
+            "department": "engineering",
+            "clearance_tier": 2,
+            "document_date": "2026-01-01",
+            "source_file": "doc1.txt",
+            "file_type": "txt",
+            "chunk_index": 0,
+            "page_number": None,
+            "row_id": None,
+            "section_title": None,
+            "token_count": 5,
+        }
+        defaults.update(overrides)
+        return DocumentChunk(**defaults)
+    return _create
 
 
 @pytest.fixture
