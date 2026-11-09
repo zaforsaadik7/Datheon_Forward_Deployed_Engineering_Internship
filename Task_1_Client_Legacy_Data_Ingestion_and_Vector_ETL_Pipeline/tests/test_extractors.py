@@ -284,3 +284,108 @@ def test_csv_header_only_raises(tmp_path: Path):
     extractor = CsvExtractor()
     with pytest.raises(ExtractionError):
         extractor.extract(file_path)
+
+
+# --- PDF Extractor and Registry Tests ---
+from src.etl.extractors.pdf_extractor import PdfExtractor
+from src.etl.extractors import get_extractor
+from src.etl.extractors.base import UnsupportedFileType
+
+
+def test_pdf_page_numbers_one_based(tmp_path: Path, make_pdf):
+    pdf_path = make_pdf(
+        tmp_path / "three_pages.pdf",
+        pages=["Page one content", "Page two content", "Page three content"]
+    )
+    extractor = PdfExtractor()
+    segments = extractor.extract(pdf_path)
+
+    assert [s.page_number for s in segments] == [1, 2, 3]
+
+
+def test_pdf_strips_repeated_header_and_page_counter(tmp_path: Path, make_pdf):
+    pdf_path = make_pdf(
+        tmp_path / "repeats.pdf",
+        pages=[
+            "First page valuable corporate information.",
+            "Second page continuous business updates.",
+            "Third page conclusion and sign-off."
+        ],
+        header="MERIDIAN CONFIDENTIAL",
+        footer_template="Page {n} of {total}"
+    )
+    extractor = PdfExtractor()
+    segments = extractor.extract(pdf_path)
+
+    assert len(segments) == 3
+    for s in segments:
+        assert "MERIDIAN CONFIDENTIAL" not in s.text
+        assert "Page " not in s.text
+    assert "corporate information" in segments[0].text
+
+
+def test_pdf_single_page_keeps_title_line(tmp_path: Path, make_pdf):
+    pdf_path = make_pdf(
+        tmp_path / "single.pdf",
+        pages=["Important Document Title\nBody of single page document."]
+    )
+    extractor = PdfExtractor()
+    segments = extractor.extract(pdf_path)
+
+    assert len(segments) == 1
+    assert "Important Document Title" in segments[0].text
+
+
+def test_pdf_hyphenated_break_repaired(tmp_path: Path, make_pdf):
+    pdf_path = make_pdf(
+        tmp_path / "hyphen.pdf",
+        pages=["The inter-\nnational team met yesterday."]
+    )
+    extractor = PdfExtractor()
+    segments = extractor.extract(pdf_path)
+
+    assert len(segments) == 1
+    assert "international" in segments[0].text
+
+
+def test_pdf_blank_page_skipped_others_kept(tmp_path: Path, make_pdf):
+    pdf_path = make_pdf(
+        tmp_path / "blank_middle.pdf",
+        pages=["First page content.", "   \n  \n  ", "Third page content."]
+    )
+    extractor = PdfExtractor()
+    segments = extractor.extract(pdf_path)
+
+    assert len(segments) == 2
+    assert [s.page_number for s in segments] == [1, 3]
+
+
+def test_pdf_all_blank_raises_ocr_message(tmp_path: Path, make_pdf):
+    pdf_path = make_pdf(
+        tmp_path / "all_blank.pdf",
+        pages=["   ", " \n "]
+    )
+    extractor = PdfExtractor()
+    with pytest.raises(ExtractionError) as exc_info:
+        extractor.extract(pdf_path)
+    assert "ocr" in str(exc_info.value).lower()
+
+
+def test_zero_byte_pdf_raises_extraction_error(tmp_path: Path):
+    pdf_path = tmp_path / "zero.pdf"
+    pdf_path.write_bytes(b"")
+
+    extractor = PdfExtractor()
+    with pytest.raises(ExtractionError):
+        extractor.extract(pdf_path)
+
+
+def test_get_extractor_by_suffix(tmp_path: Path):
+    assert get_extractor(Path("doc.pdf")).file_type == "pdf"
+    assert get_extractor(Path("doc.MD")).file_type == "markdown"
+    assert get_extractor(Path("doc.csv")).file_type == "csv"
+    assert get_extractor(Path("doc.json")).file_type == "json"
+    assert get_extractor(Path("doc.txt")).file_type == "txt"
+
+    with pytest.raises(UnsupportedFileType):
+        get_extractor(Path("doc.docx"))
