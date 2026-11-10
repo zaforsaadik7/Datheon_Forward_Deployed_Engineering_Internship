@@ -15,3 +15,4 @@ scrape_configs:
     static_configs:
       - targets:
           - "fde-vpc-api:8000"
+

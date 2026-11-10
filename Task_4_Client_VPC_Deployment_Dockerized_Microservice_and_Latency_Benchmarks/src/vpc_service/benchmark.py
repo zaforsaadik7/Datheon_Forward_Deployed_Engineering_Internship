@@ -170,12 +170,18 @@ async def _execute_all_workloads(
         async def wl_agent_safe_read(_i: int) -> bool:
             r = await client.post(
                 "/api/v1/agent/run",
-                json={"goal": "Look up customer CUST-001 and check inventory for SKU-COOL-100."},
+                json={"goal": "Check inventory for SKU-GPU-H100 and SKU-NET-SW400."},
                 headers=eng_headers,
             )
             if r.status_code != 200:
                 return False
-            return r.json().get("status") == "COMPLETED"
+            body = r.json()
+            tool_steps = [s for s in body.get("steps", []) if s.get("action_type") == "TOOL_CALL"]
+            return (
+                body.get("status") == "COMPLETED"
+                and len(tool_steps) >= 2
+                and all(s.get("status") == "OK" for s in tool_steps)
+            )
 
         async def wl_agent_hitl_roundtrip(i: int) -> bool:
             r_run = await client.post(
@@ -304,9 +310,7 @@ def run_vpc_benchmarks(
             {
                 "FDE_ENV": "production",
                 "FDE_VAR_DIR": str(var_dir),
-                "FDE_AIRGAPPED_MODE": "true",
-                "FDE_PLANNER_MODE": "rule_based",
-                "FDE_AUTO_SEED_ON_STARTUP": "true",
+                "FDE_AIRGAPPED_MODE": "true",                "FDE_AUTO_SEED": "true",
                 "FDE_ALLOW_SAMPLE_SEED": "true",
                 "FDE_API_KEYS_FILE": str(keys_file),
                 "FDE_METRICS_TOKEN_FILE": str(metrics_file),

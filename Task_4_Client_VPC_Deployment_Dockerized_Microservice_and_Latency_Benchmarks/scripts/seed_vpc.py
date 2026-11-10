@@ -94,3 +94,4 @@ def ensure_vpc_seeded(
         "chroma_chunks": chroma_chunks,
         "erp_skus": erp_skus,
     }
+

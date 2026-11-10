@@ -164,3 +164,4 @@ def test_idempotent_auto_seed_and_production_seed_guard_with_sanitized_readiness
     )
     assert second_seed["seeded_now"] is False
     assert erp_db.get_inventory("SKU-GPU-H100").available == 16
+

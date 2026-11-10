@@ -21,8 +21,8 @@ services:
       FDE_ENV: "production"
       FDE_VAR_DIR: "/app/var"
       FDE_AIRGAPPED_MODE: "true"
-      FDE_PLANNER_MODE: "rule_based"
-      FDE_AUTO_SEED_ON_STARTUP: "true"
+      FDE_PLANNER: "rule"
+      FDE_AUTO_SEED: "true"
       FDE_ALLOW_SAMPLE_SEED: "true"
       FDE_API_KEYS_FILE: "/run/secrets/fde_api_keys_json"
       FDE_METRICS_TOKEN_FILE: "/run/secrets/fde_metrics_token"
@@ -87,3 +87,4 @@ volumes:
 networks:
   vpc_internal_net:
     driver: bridge
+

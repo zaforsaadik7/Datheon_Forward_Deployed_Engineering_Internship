@@ -309,3 +309,4 @@ def test_multi_tenant_isolation_across_rag_and_agent_endpoints(tmp_path: Path) -
         )
         assert globex_check.status_code == 200
         assert "3 available" in globex_check.json()["final_answer"]
+

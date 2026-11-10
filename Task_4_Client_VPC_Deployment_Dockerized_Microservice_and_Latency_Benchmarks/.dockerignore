@@ -13,3 +13,4 @@ chroma_db/
 reports/
 deploy/secrets/fde_api_keys.json
 deploy/secrets/fde_metrics_token.txt
+

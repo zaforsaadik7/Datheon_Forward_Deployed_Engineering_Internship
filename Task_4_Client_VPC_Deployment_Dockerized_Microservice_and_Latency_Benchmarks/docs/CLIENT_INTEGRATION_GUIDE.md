@@ -119,3 +119,4 @@ Every authenticated API key resolves to an immutable `VPCPrincipal`:
 - **Graceful Drain:** Uvicorn runs with `--timeout-graceful-shutdown 15`, allowing in-flight RAG queries and SQLite WAL commits to finish cleanly on `SIGTERM` before container exit.
 - **Correlation ID Triage:** Every request accepts or generates an `X-Request-ID` header, echoes it on the response, and emits a single-line JSON log record to `stdout` containing `request_id`, `method`, `route`, `status_code`, `latency_ms`, `error_class`, `principal_id`, and `tenant_id`.
 - **Volume Backup:** Back up `/app/var` using online SQLite `.backup` or snapshot `fde_vpc_var` during maintenance windows.
+

@@ -102,3 +102,4 @@ bash scripts/smoke_test.sh
 ```
 
 See [docs/CLIENT_INTEGRATION_GUIDE.md](docs/CLIENT_INTEGRATION_GUIDE.md) for the complete 8-section Client VPC integration, secret rotation, telemetry, and operations runbook.
+

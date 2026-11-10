@@ -50,3 +50,4 @@ groups:
         annotations:
           summary: "Supervisor HITL approval queue backlog (>20 pending requests)"
           description: "There are {{ $value }} pending supervisor approvals waiting in the HITL queue."
+

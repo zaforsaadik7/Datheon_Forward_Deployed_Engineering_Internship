@@ -43,7 +43,7 @@ curl -fsS -X POST http://127.0.0.1:8000/api/v1/rag/query \
 curl -fsS -X POST http://127.0.0.1:8000/api/v1/agent/run \
   -H "X-API-Key: ${ENG_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"goal": "Look up customer CUST-001 and check inventory for SKU-COOL-100."}' | grep -q '"COMPLETED"'
+  -d '{"goal": "Check inventory for SKU-GPU-H100 and SKU-NET-SW400."}' | grep -q '"COMPLETED"'
 
 curl -fsS http://127.0.0.1:8000/metrics \
   -H "Authorization: Bearer ${METRICS_TOKEN}" | grep -q 'fde_http_requests_total'

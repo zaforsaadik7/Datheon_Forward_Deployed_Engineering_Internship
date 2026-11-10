@@ -163,3 +163,4 @@ def test_gitignore_dockerignore_and_smoke_scripts_exist() -> None:
         assert "/api/v1/agent/run" in script_text
         assert "/metrics" in script_text
         assert "docker compose down" in script_text
+

@@ -46,8 +46,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FDE_ENV=production \
     FDE_VAR_DIR=/app/var \
     FDE_AIRGAPPED_MODE=true \
-    FDE_PLANNER_MODE=rule_based \
-    FDE_AUTO_SEED_ON_STARTUP=true \
+    FDE_PLANNER=rule \
+    FDE_AUTO_SEED=true \
     HF_HOME=/opt/models \
     SENTENCE_TRANSFORMERS_HOME=/opt/models \
     HF_HUB_OFFLINE=1 \
@@ -60,7 +60,6 @@ COPY --from=builder --chown=10001:10001 /opt/models /opt/models
 COPY --chown=10001:10001 src ./src
 COPY --chown=10001:10001 scripts ./scripts
 COPY --chown=10001:10001 data ./data
-COPY --chown=10001:10001 sample_data ./sample_data
 
 USER 10001:10001
 
@@ -70,3 +69,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
 
 CMD ["uvicorn", "src.vpc_service.app:create_vpc_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-graceful-shutdown", "15"]
+

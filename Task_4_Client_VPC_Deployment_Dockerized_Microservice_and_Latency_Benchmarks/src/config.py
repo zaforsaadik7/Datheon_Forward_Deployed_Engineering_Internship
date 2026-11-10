@@ -50,3 +50,4 @@ class Settings:
 def get_settings() -> Settings:
     """Return default application settings."""
     return Settings()
+

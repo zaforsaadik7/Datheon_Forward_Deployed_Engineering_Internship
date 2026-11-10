@@ -83,3 +83,4 @@ def evaluate_readiness(
         "status": "ready" if all_ok else "degraded",
         "checks": checks,
     }
+

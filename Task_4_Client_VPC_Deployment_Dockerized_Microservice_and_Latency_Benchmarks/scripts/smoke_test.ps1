@@ -39,7 +39,7 @@ try {
     $ragResp = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/rag/query" -Method Post -Headers $headers -Body $ragBody
     if (-not $ragResp.token_usage) { throw "Missing token_usage in RAG response" }
 
-    $agentBody = '{"goal": "Look up customer CUST-001 and check inventory for SKU-COOL-100."}'
+    $agentBody = '{"goal": "Check inventory for SKU-GPU-H100 and SKU-NET-SW400."}'
     $agentResp = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/agent/run" -Method Post -Headers $headers -Body $agentBody
     if ($agentResp.status -ne "COMPLETED") { throw "Unexpected agent status: $($agentResp.status)" }
 
