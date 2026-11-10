@@ -27,7 +27,7 @@ flowchart TD
    - Backed by SQLite (`inventory`, `reservations`, `leads`, `tickets`, `idempotency_keys`).
    - Enforces stock availability checks (`409 Conflict` when `quantity > available`), strict CRM state machine transitions (`ALLOWED_LEAD_TRANSITIONS`: `NEW -> {CONTACTED, QUALIFIED, LOST}`, `CONTACTED -> {QUALIFIED, PROPOSAL_SENT, LOST}`, `QUALIFIED -> {PROPOSAL_SENT, WON, LOST}`, `PROPOSAL_SENT -> {WON, LOST}`, `WON`/`LOST` terminal), and `Idempotency-Key` deduplication on all write endpoints.
 2. **Resilient HTTP Tool Execution (`src/agent/http_client.py` & `src/agent/tools.py`)**
-   - `ResilientERPClient` retries transient upstream failures (`429`, `502`, `503`, `504`, and `httpx.TransportError`) using exponential backoff (`base_backoff_s * 2^attempt`) while attaching deterministic `Idempotency-Key` headers (`{session_id}-step-{step_index}-{tool_name}`) so retried writes never double-mutate state.
+   - `ResilientERPClient` retries transient upstream failures (`429`, `502`, `503`, `504`, and `httpx.TransportError`) using exponential backoff (`base_backoff_s * 2^attempt`) while attaching deterministic `Idempotency-Key` headers (`idem-{session_id}-{step_index}-{tool_name}-{args_hash}`) so retried writes never double-mutate state.
    - Deterministic client errors (`400`, `404`, `409`, `422`) are never retried; they are formatted into structured observations so the planner can self-heal or pivot.
 3. **Code-Enforced Sensitivity Policy & Separation of Duties (`src/agent/auth.py` & `src/agent/session_store.py`)**
    - Tool sensitivity is computed in code by `classify_tool_sensitivity(tool_name, tool_args)`—never by the LLM:
@@ -37,7 +37,7 @@ flowchart TD
    - Only `ops_supervisor` (`role="supervisor"`) can approve or reject a `PendingApproval` (`403 Forbidden` if `field_operator` attempts self-approval).
    - Approval tickets bind to `canonical_args_sha256(tool_name, tool_args)`, enforce a TTL (`expires_at`), and transition atomically `PENDING -> APPROVED -> CONSUMED` (`409 Conflict` on replay or expiry).
 4. **Indirect Prompt Injection Defense (`src/agent/tools.py` & `src/agent/planner.py`)**
-   - All external ERP/CRM tool payloads are wrapped in `<tool_output_data trust="untrusted">...</tool_output_data>` tags before entering the ReAct observation history. Hostile instructions inside CRM lead notes (e.g., `LEAD-104`) are treated strictly as passive data and cannot trigger unauthorized tool calls or bypass HITL gates.
+   - All external ERP/CRM tool payloads are wrapped in `<tool_output_data tool="...">...</tool_output_data>` tags before entering the ReAct observation history. Hostile instructions inside CRM lead notes (e.g., `LEAD-104`) are treated strictly as passive data and cannot trigger unauthorized tool calls or bypass HITL gates.
 
 ---
 
@@ -113,3 +113,6 @@ python -m src.agent.cli eval --out reports/agent_eval.json
 - **Overall Pass Rate:** `100.0%` (`10 / 10` scenarios)
 - **Unauthorized Mutations:** `0`
 - **Latency:** `P50 = 118.64 ms`, `P95 = 352.36 ms`
+
+
+> **Scope note:** the offline RuleBasedReActPlanner derives intent only from the operator goal, so scenario S10 proves the orchestration/HITL layer ignores hostile data. It does not test an LLM resisting injection; OpenAIFunctionPlanner is unit-tested only against a mocked HTTP endpoint.
