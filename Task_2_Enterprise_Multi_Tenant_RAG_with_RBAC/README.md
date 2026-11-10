@@ -6,6 +6,39 @@ An enterprise-grade, multi-tenant Retrieval-Augmented Generation (RAG) engine an
 
 ---
 
+## Folder Structure
+
+```text
+Task_2_Enterprise_Multi_Tenant_RAG_with_RBAC/
+├── README.md                         # Architecture, RBAC matrix, evaluation metrics & quickstart
+├── requirements.txt                  # Pinned Python dependencies
+├── pytest.ini                        # Pytest configuration & real_models marker
+├── data/
+│   └── sample_documents/             # Multi-format enterprise corpus + manifest.yaml
+├── reports/
+│   └── rag_eval.json                 # 19-case multi-persona RBAC & ground-truth evaluation report
+├── scripts/
+│   └── make_sample_data.py           # Deterministic sample corpus generator
+├── src/
+│   ├── config.py                     # RAG, ETL & ChromaDB configuration
+│   ├── api/
+│   │   └── app.py                    # Authenticated FastAPI service (/api/v1/rag/query, /personas)
+│   ├── etl/                          # Multi-format extractors, recursive chunker, tenant-aware vector store
+│   └── rag/
+│       ├── models.py                 # Pydantic schemas for principals, citations, guardrails & responses
+│       ├── rbac.py                   # 6-persona registry, API key auth, pre/post-retrieval RBAC barrier
+│       ├── query_rewriter.py         # Enterprise acronym expansion & advisory prompt-injection detector
+│       ├── reranker.py               # OnnxCrossEncoder & candidate-scoped LexicalReranker (BM25)
+│       ├── synthesizer.py            # Marker-based extractive synthesizer & 4-level locator renderer
+│       ├── guardrails.py             # Canonical numeric & structured entity hallucination verifier
+│       ├── engine.py                 # End-to-end MultiTenantRAGEngine with uniform abstention
+│       ├── eval.py                   # 19-case RBAC leak & citation accuracy evaluation harness
+│       └── cli.py                    # Typer + Rich CLI (ingest, personas, ask, eval, serve)
+└── tests/                            # Unit, integration, API, CLI & real neural model test suite
+```
+
+---
+
 ## Architecture & Security Design
 
 ```mermaid
