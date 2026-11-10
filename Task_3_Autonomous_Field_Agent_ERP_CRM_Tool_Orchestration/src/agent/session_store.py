@@ -261,17 +261,31 @@ class SessionStore:
                 raise ApprovalNotFoundError(f"Approval ticket '{approval_id}' not found.")
             return self._row_to_approval(row)
 
-    def list_approvals(self, session_id: Optional[str] = None) -> List[PendingApproval]:
+    def list_approvals(
+        self,
+        session_id: Optional[str] = None,
+        requested_by: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[PendingApproval]:
+        clauses: List[str] = []
+        params: List[Any] = []
+        if session_id:
+            clauses.append("session_id = ?")
+            params.append(session_id.strip().upper())
+        if requested_by:
+            clauses.append("requested_by = ?")
+            params.append(requested_by.strip())
+        if status:
+            clauses.append("status = ?")
+            params.append(status.strip().upper())
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        order_sql = "ORDER BY created_at ASC" if session_id else "ORDER BY created_at DESC"
         with self._connect() as conn:
-            if session_id:
-                rows = conn.execute(
-                    "SELECT * FROM pending_approvals WHERE session_id = ? ORDER BY created_at ASC",
-                    (session_id,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM pending_approvals ORDER BY created_at DESC"
-                ).fetchall()
+            rows = conn.execute(
+                f"SELECT * FROM pending_approvals {where_sql} {order_sql}",
+                tuple(params),
+            ).fetchall()
             return [self._row_to_approval(r) for r in rows]
 
     def _check_not_expired(self, conn: sqlite3.Connection, approval: PendingApproval) -> None:

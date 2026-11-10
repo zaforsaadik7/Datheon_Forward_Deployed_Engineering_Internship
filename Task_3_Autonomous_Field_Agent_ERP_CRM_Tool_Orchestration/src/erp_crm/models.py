@@ -143,3 +143,4 @@ class FaultInjectionRule(BaseModel):
     path: str = Field(..., min_length=1)
     remaining_failures: int = Field(..., ge=1, le=20)
     status_code: int = Field(default=503)
+

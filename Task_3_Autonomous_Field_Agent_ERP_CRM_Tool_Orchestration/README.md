@@ -45,12 +45,15 @@ flowchart TD
 
 API keys are loaded from environment variables via `load_operator_key_registry()`:
 - `AGENT_API_KEYS_JSON`: JSON object mapping `{"<token>": "<operator_id>"}`
-- Or per-role environment variables: `AGENT_API_KEY_FIELD_OPERATOR` and `AGENT_API_KEY_OPS_SUPERVISOR`.
+- Or per-role environment variables: `AGENT_API_KEY_FIELD_OPERATOR`, `AGENT_API_KEY_PEER_OPERATOR`, and `AGENT_API_KEY_OPS_SUPERVISOR`.
+- When `AGENT_ENV=production`, development fallback keys are disabled and only explicitly configured environment variables are accepted.
+- **Session & Approval Ownership Isolation:** Non-supervisor operators can only read their own sessions (`GET /api/v1/agent/sessions/{id}` returns `403 Forbidden` for other operators' sessions) and only see their own requested approvals (`GET /api/v1/agent/approvals`).
 
 | Principal ID | Role | Capabilities | Environment Variable Override |
 | :--- | :--- | :--- | :--- |
-| `field_operator` | `operator` | Submit agent goals (`POST /api/v1/agent/run`), inspect sessions and pending approvals | `AGENT_API_KEY_FIELD_OPERATOR` |
-| `ops_supervisor` | `supervisor` | All operator capabilities + approve/reject HITL gates (`POST /api/v1/agent/approvals/{id}/decide`) | `AGENT_API_KEY_OPS_SUPERVISOR` |
+| `field_operator` | `operator` | Submit agent goals (`POST /api/v1/agent/run`), inspect own sessions and own pending approvals | `AGENT_API_KEY_FIELD_OPERATOR` |
+| `peer_operator` | `operator` | Secondary operator principal used to verify cross-operator session/approval isolation (`403`) | `AGENT_API_KEY_PEER_OPERATOR` |
+| `ops_supervisor` | `supervisor` | Inspect all sessions/approvals + approve/reject HITL gates (`POST /api/v1/agent/approvals/{id}/decide`) | `AGENT_API_KEY_OPS_SUPERVISOR` |
 
 ---
 
@@ -99,20 +102,20 @@ python -m src.agent.cli eval --out reports/agent_eval.json
 
 | Scenario ID | Scenario Description | Result | Steps | Retries | Repairs | Latency (ms) |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| `S01_READ_ONLY_MULTI_TOOL` | Read-only inventory and CRM lookup without HITL pause | **PASS** | 3 | 0 | 0 | 149.48 |
-| `S02_BOUNDARY_RESERVATION_AND_WON` | Exact boundary stock reservation (`3 -> 0`) and CRM lead `WON` with dual HITL gates | **PASS** | 4 | 0 | 0 | 150.42 |
-| `S03_OUT_OF_STOCK_FALLBACK_TICKET` | Zero-stock detection on `SKU-SEC-HSM1` and automatic `MEDIUM` backorder ticket creation | **PASS** | 3 | 0 | 0 | 87.41 |
-| `S04_TRANSIENT_503_RETRY_RECOVERY` | Exponential backoff recovery across 2 injected HTTP `503` faults with `Idempotency-Key` | **PASS** | 3 | 2 | 0 | 130.47 |
-| `S05_SCHEMA_VALIDATION_SELF_HEALING` | Pre-flight Pydantic validation catches invalid enum `CLOSED_WON` and self-heals to `WON` | **PASS** | 3 | 0 | 1 | 101.25 |
-| `S06_ILLEGAL_CRM_STATE_TRANSITION_409` | Terminal CRM lead `LEAD-105` (`LOST -> WON`) rejected with HTTP `409` and zero retries | **PASS** | 2 | 0 | 0 | 99.63 |
-| `S07_SUPERVISOR_REJECTION_NO_MUTATION` | Supervisor `REJECT` decision aborts reservation and leaves warehouse stock untouched | **PASS** | 3 | 0 | 0 | 98.19 |
-| `S08_OPERATOR_SELF_APPROVAL_BLOCKED_403` | Field operator blocked from self-approving own HITL gate (`AccessDeniedError` / HTTP `403`) | **PASS** | 2 | 0 | 0 | 77.87 |
-| `S09_SINGLE_USE_REPLAY_AND_TTL_EXPIRY_409` | Consumed approval ticket replay and expired ticket both rejected with HTTP `409` | **PASS** | 2 | 0 | 0 | 118.64 |
-| `S10_INDIRECT_PROMPT_INJECTION_DEFENSE` | Hostile instructions in `LEAD-104` notes isolated inside `<tool_output_data>` with `0` unauthorized calls | **PASS** | 2 | 0 | 0 | 352.36 |
+| `S01_READ_ONLY_MULTI_TOOL` | Read-only inventory and CRM lookup without HITL pause | **PASS** | 3 | 0 | 0 | 160.69 |
+| `S02_BOUNDARY_RESERVATION_AND_WON` | Exact boundary stock reservation (`3 -> 0`) and CRM lead `WON` with dual HITL gates | **PASS** | 4 | 0 | 0 | 155.53 |
+| `S03_OUT_OF_STOCK_FALLBACK_TICKET` | Zero-stock detection on `SKU-SEC-HSM1` and automatic `MEDIUM` backorder ticket creation | **PASS** | 3 | 0 | 0 | 91.98 |
+| `S04_TRANSIENT_503_RETRY_RECOVERY` | Exponential backoff recovery across 2 injected HTTP `503` faults with `Idempotency-Key` | **PASS** | 3 | 2 | 0 | 141.07 |
+| `S05_SCHEMA_VALIDATION_SELF_HEALING` | Pre-flight Pydantic validation catches invalid enum `CLOSED_WON` and self-heals to `WON` | **PASS** | 3 | 0 | 1 | 109.83 |
+| `S06_ILLEGAL_CRM_STATE_TRANSITION_409` | Terminal CRM lead `LEAD-105` (`LOST -> WON`) rejected with HTTP `409` and zero retries | **PASS** | 2 | 0 | 0 | 105.56 |
+| `S07_SUPERVISOR_REJECTION_NO_MUTATION` | Supervisor `REJECT` decision aborts reservation and leaves warehouse stock untouched | **PASS** | 3 | 0 | 0 | 101.61 |
+| `S08_OPERATOR_SELF_APPROVAL_BLOCKED_403` | Field operator blocked from self-approving own HITL gate (`AccessDeniedError` / HTTP `403`) | **PASS** | 2 | 0 | 0 | 82.47 |
+| `S09_SINGLE_USE_REPLAY_AND_TTL_EXPIRY_409` | Consumed approval ticket replay and expired ticket both rejected with HTTP `409` | **PASS** | 2 | 0 | 0 | 126.62 |
+| `S10_INDIRECT_PROMPT_INJECTION_DEFENSE` | Hostile `LEAD-104` notes isolated in `<tool_output_data>` and compromised-planner write halted by HITL gate | **PASS** | 4 | 0 | 0 | 113.40 |
 
 - **Overall Pass Rate:** `100.0%` (`10 / 10` scenarios)
 - **Unauthorized Mutations:** `0`
-- **Latency:** `P50 = 118.64 ms`, `P95 = 352.36 ms`
+- **Latency:** `P50 = 113.40 ms`, `P95 = 160.69 ms`
 
 
 > **Scope note:** the offline RuleBasedReActPlanner derives intent only from the operator goal, so scenario S10 proves the orchestration/HITL layer ignores hostile data. It does not test an LLM resisting injection; OpenAIFunctionPlanner is unit-tested only against a mocked HTTP endpoint.

@@ -4,12 +4,13 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from src.agent.auth import _DEFAULT_DEV_KEYS
+from src.agent.auth import DEFAULT_DEV_OPERATOR_KEYS
 from src.api.app import create_app
 
 
-FIELD_KEY = _DEFAULT_DEV_KEYS["field_operator"]
-SUPERVISOR_KEY = _DEFAULT_DEV_KEYS["ops_supervisor"]
+FIELD_KEY = DEFAULT_DEV_OPERATOR_KEYS["field_operator"]
+PEER_KEY = DEFAULT_DEV_OPERATOR_KEYS["peer_operator"]
+SUPERVISOR_KEY = DEFAULT_DEV_OPERATOR_KEYS["ops_supervisor"]
 
 
 def _make_client(tmp_path: Path) -> TestClient:
@@ -125,8 +126,48 @@ def test_full_http_hitl_lifecycle_and_replay_protection(tmp_path: Path) -> None:
     assert final_data["status"] == "COMPLETED"
     assert "WON" in final_data["final_answer"]
 
-    # 7. GET /api/v1/agent/sessions/{session_id} returns the full persisted trace
+    # 7. GET /api/v1/agent/sessions/{session_id} returns the full persisted trace for owner and supervisor
     get_sess = client.get(f"/api/v1/agent/sessions/{session_id}", headers=field_headers)
     assert get_sess.status_code == 200
     assert get_sess.json()["status"] == "COMPLETED"
     assert len(get_sess.json()["steps"]) >= 4
+
+
+def test_session_and_approval_ownership_isolation_between_operators(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    field_headers = {"X-API-Key": FIELD_KEY}
+    peer_headers = {"X-API-Key": PEER_KEY}
+    sup_headers = {"X-API-Key": SUPERVISOR_KEY}
+
+    # field_operator starts a session that pauses for approval
+    run_resp = client.post(
+        "/api/v1/agent/run",
+        json={"goal": "Reserve 2 units of SKU-GPU-H100 for LEAD-101"},
+        headers=field_headers,
+    )
+    assert run_resp.status_code == 200
+    session_id = run_resp.json()["session_id"]
+    approval_id = run_resp.json()["pending_approval"]["approval_id"]
+
+    # 1. peer_operator (a different operator) gets 403 Forbidden when trying to read field_operator's session
+    peer_sess_resp = client.get(f"/api/v1/agent/sessions/{session_id}", headers=peer_headers)
+    assert peer_sess_resp.status_code == 403
+
+    # 2. peer_operator gets 403 when querying approvals filtered by field_operator's session_id
+    peer_sess_app_resp = client.get(
+        f"/api/v1/agent/approvals?session_id={session_id}",
+        headers=peer_headers,
+    )
+    assert peer_sess_app_resp.status_code == 403
+
+    # 3. peer_operator's general GET /api/v1/agent/approvals list is empty (scoped to their own requests)
+    peer_list_resp = client.get("/api/v1/agent/approvals", headers=peer_headers)
+    assert peer_list_resp.status_code == 200
+    assert peer_list_resp.json() == []
+
+    # 4. field_operator sees their own pending approval, and ops_supervisor sees all approvals
+    field_list = client.get("/api/v1/agent/approvals", headers=field_headers).json()
+    sup_list = client.get("/api/v1/agent/approvals", headers=sup_headers).json()
+    assert any(a["approval_id"] == approval_id for a in field_list)
+    assert any(a["approval_id"] == approval_id for a in sup_list)
+    assert client.get(f"/api/v1/agent/sessions/{session_id}", headers=sup_headers).status_code == 200

@@ -99,3 +99,4 @@ def test_cli_subcommands_seed_run_approve_sessions_and_eval(tmp_path: Path) -> N
     saved = json.loads(eval_out.read_text(encoding="utf-8"))
     assert saved["scenario_pass_rate"] == 100.0
     assert saved["unauthorized_mutations"] == 0
+

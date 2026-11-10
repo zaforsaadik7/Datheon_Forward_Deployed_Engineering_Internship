@@ -170,3 +170,4 @@ def test_indirect_prompt_injection_in_crm_notes_is_ignored_and_cannot_bypass_hit
     assert res_comp.pending_approval is not None
     assert res_comp.pending_approval.tool_name == "reserve_inventory"
     assert erp_db.get_inventory("SKU-GPU-H100").available == 20
+

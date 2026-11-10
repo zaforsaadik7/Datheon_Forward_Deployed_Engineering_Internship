@@ -104,3 +104,4 @@ class AgentRunResult(BaseModel):
     total_retries: int = 0
     validation_repairs: int = 0
     total_ms: float = 0.0
+

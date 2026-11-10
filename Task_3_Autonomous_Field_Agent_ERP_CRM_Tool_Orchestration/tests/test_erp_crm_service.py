@@ -119,3 +119,4 @@ def test_itsm_ticket_creation_and_transient_fault_injection(tmp_path: Path):
     r_ok = client.post("/itsm/v1/tickets", json=payload, headers=headers)
     assert r_ok.status_code == 200
     assert r_ok.json()["ticket_id"].startswith("TCK-")
+

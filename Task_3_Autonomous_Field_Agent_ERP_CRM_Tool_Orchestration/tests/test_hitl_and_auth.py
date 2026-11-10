@@ -40,6 +40,13 @@ def test_env_var_operator_auth_and_supervisor_role_separation(monkeypatch):
     # Supervisor passes role check
     require_supervisor(sup)
 
+    # In production mode (AGENT_ENV=production), fallback dev keys are disabled unless explicitly set in env
+    monkeypatch.setenv("AGENT_ENV", "production")
+    monkeypatch.delenv("AGENT_API_KEY_FIELD_OPERATOR", raising=False)
+    monkeypatch.delenv("AGENT_API_KEY_OPS_SUPERVISOR", raising=False)
+    with pytest.raises(AuthenticationError):
+        authenticate_operator("key-field-operator")
+
 
 def test_sqlite_session_store_enforces_hash_binding_single_use_and_ttl_expiry(tmp_path: Path):
     store = SessionStore(db_path=tmp_path / "sessions.db")
@@ -125,3 +132,4 @@ def test_expired_approval_ticket_is_rejected_on_decide_and_consume(tmp_path: Pat
 
     reloaded = store.get_approval(expired_ticket.approval_id)
     assert reloaded.status == "EXPIRED"
+

@@ -133,19 +133,47 @@ def create_app(
         session_id: str,
         principal: OperatorPrincipal = Depends(_get_principal),
     ) -> AgentRunResult:
-        _ = principal
         try:
-            return session_store.get_session_result(session_id)
+            session = session_store.get_session_result(session_id)
         except SessionNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        if principal.role != "supervisor" and session.operator_id != principal.operator_id:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Operator '{principal.operator_id}' is not authorized to view "
+                    f"session '{session.session_id}' owned by '{session.operator_id}'."
+                ),
+            )
+        return session
 
     @app.get("/api/v1/agent/approvals", response_model=List[PendingApproval])
     def list_pending_approvals(
         session_id: Optional[str] = None,
+        status: Optional[str] = None,
         principal: OperatorPrincipal = Depends(_get_principal),
     ) -> List[PendingApproval]:
-        _ = principal
-        return session_store.list_approvals(session_id=session_id)
+        if session_id:
+            try:
+                session = session_store.get_session_result(session_id)
+            except SessionNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            if principal.role != "supervisor" and session.operator_id != principal.operator_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Operator '{principal.operator_id}' is not authorized to view approvals "
+                        f"for session '{session.session_id}' owned by '{session.operator_id}'."
+                    ),
+                )
+
+        requested_by_filter = None if principal.role == "supervisor" else principal.operator_id
+        return session_store.list_approvals(
+            session_id=session_id,
+            requested_by=requested_by_filter,
+            status=status,
+        )
 
     @app.post("/api/v1/agent/approvals/{approval_id}/decide", response_model=AgentRunResult)
     def decide_pending_approval(

@@ -392,3 +392,4 @@ class OpenAIFunctionPlanner:
             thought="Synthesizing final response from tool observations.",
             final_answer=content or "Task complete.",
         )
+

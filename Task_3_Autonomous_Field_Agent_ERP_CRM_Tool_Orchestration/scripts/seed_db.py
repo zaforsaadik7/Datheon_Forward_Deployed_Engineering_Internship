@@ -27,3 +27,4 @@ def seed_database(
 if __name__ == "__main__":
     seeded = seed_database()
     print(f"Seeded ERP/CRM SQLite database at {seeded.db_path}")
+

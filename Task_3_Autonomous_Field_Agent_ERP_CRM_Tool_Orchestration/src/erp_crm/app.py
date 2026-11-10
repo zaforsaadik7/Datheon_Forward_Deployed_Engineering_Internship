@@ -140,3 +140,4 @@ def create_erp_crm_app(db: Optional[ERPCRMDatabase] = None) -> FastAPI:
         return erp_db.create_ticket(payload, idempotency_key=idempotency_key)
 
     return app
+

@@ -172,3 +172,4 @@ def test_out_of_stock_conflict_creates_auto_write_escalation_ticket(tmp_path: Pa
     assert "TCK-" in res.final_answer
     tickets = erp_db.list_tickets()
     assert any(t.related_sku == "SKU-SEC-HSM1" for t in tickets)
+

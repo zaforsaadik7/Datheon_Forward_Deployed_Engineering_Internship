@@ -112,3 +112,4 @@ def test_tool_sensitivity_classification_and_preflight_schema_validation(tmp_pat
     h1 = canonical_args_sha256("reserve_inventory", {"sku": "SKU-GPU-H100", "quantity": 5, "lead_id": "LEAD-101"})
     h2 = canonical_args_sha256("reserve_inventory", {"lead_id": "LEAD-101", "quantity": 5, "sku": "SKU-GPU-H100"})
     assert h1 == h2
+
