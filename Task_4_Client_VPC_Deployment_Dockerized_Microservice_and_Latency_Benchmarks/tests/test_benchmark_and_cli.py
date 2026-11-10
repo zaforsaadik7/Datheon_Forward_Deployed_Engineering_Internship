@@ -32,7 +32,7 @@ def test_live_uvicorn_subprocess_benchmark_all_5_workloads_and_environment_metad
     assert env_meta["containerized"] is False
     assert isinstance(env_meta["docker_cli_available"], bool)
     assert env_meta["embedding_backend"] == "DeterministicHashEmbedding"
-    assert env_meta["reranker_backend"] == "LexicalCrossEncoder"
+    assert env_meta["reranker_backend"] == "LexicalReranker"
     assert "python_version" in env_meta
     assert "platform" in env_meta
     assert env_meta["cpu_count"] >= 1

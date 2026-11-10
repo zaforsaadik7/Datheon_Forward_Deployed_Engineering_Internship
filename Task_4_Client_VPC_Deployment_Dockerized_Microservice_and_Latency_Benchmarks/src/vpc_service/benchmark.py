@@ -402,7 +402,7 @@ def run_vpc_benchmarks(
                 "containerized": False,
                 "docker_cli_available": shutil.which("docker") is not None,
                 "embedding_backend": "DeterministicHashEmbedding",
-                "reranker_backend": "LexicalCrossEncoder",
+                "reranker_backend": "LexicalReranker",
                 "planner_backend": "RuleBasedReActPlanner",
                 "sqlite_journal_mode": "WAL",
                 "sqlite_busy_timeout_ms": 5000,

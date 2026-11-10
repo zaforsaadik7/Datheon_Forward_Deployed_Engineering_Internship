@@ -56,7 +56,7 @@ Task_4_Client_VPC_Deployment_Dockerized_Microservice_and_Latency_Benchmarks/
 │   └── vpc_service/                  # Unified VPC gateway, auth, secrets, telemetry, CLI, benchmark
 ├── reports/
 │   └── vpc_latency_benchmark.json    # Generated p50/p95/p99 latency & RPS benchmark report
-└── tests/                            # 20 automated unit, integration, config & benchmark tests
+└── tests/                            # 28 automated unit, integration, config & benchmark tests
 ```
 
 ---
