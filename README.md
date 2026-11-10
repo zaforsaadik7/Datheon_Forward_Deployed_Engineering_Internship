@@ -20,22 +20,38 @@ Datheon_Forward_Deployed_Engineering_Internship/
 │   │   ├── config.py                 # Pipeline & ChromaDB cosine configuration
 │   │   └── etl/                      # Extractors, recursive chunker, manifest resolver, vector store, CLI
 │   └── tests/                        # 98 automated unit, integration, and real-embedding tests
-└── Task_2_Enterprise_Multi_Tenant_RAG_with_RBAC/
-    ├── README.md                     # Architecture, 6-persona RBAC matrix, evaluation metrics & quickstart
+├── Task_2_Enterprise_Multi_Tenant_RAG_with_RBAC/
+│   ├── README.md                     # Architecture, 6-persona RBAC matrix, evaluation metrics & quickstart
+│   ├── requirements.txt              # Python dependencies
+│   ├── pytest.ini                    # Pytest configuration
+│   ├── data/
+│   │   └── sample_documents/         # Multi-format enterprise corpus + manifest.yaml
+│   ├── reports/
+│   │   └── rag_eval.json             # 19-case multi-persona RBAC & ground-truth evaluation report
+│   ├── scripts/
+│   │   └── make_sample_data.py       # Deterministic sample corpus generator
+│   ├── src/
+│   │   ├── config.py                 # RAG, ETL & ChromaDB configuration
+│   │   ├── api/                      # Authenticated FastAPI service (/api/v1/rag/query, /personas)
+│   │   ├── etl/                      # Multi-format extractors, recursive chunker, tenant-aware vector store
+│   │   └── rag/                      # RBAC, query rewriter, ONNX/BM25 reranker, synthesizer, guardrails, CLI
+│   └── tests/                        # Automated unit, integration, API, CLI & real neural model tests
+└── Task_3_Autonomous_Field_Agent_ERP_CRM_Tool_Orchestration/
+    ├── README.md                     # Architecture, role matrix, 10-scenario evaluation & quickstart
     ├── requirements.txt              # Python dependencies
     ├── pytest.ini                    # Pytest configuration
     ├── data/
-    │   └── sample_documents/         # Multi-format enterprise corpus + manifest.yaml
+    │   └── seed_enterprise_data.json # Seed inventory SKUs, CRM leads & ITSM tickets
     ├── reports/
-    │   └── rag_eval.json             # 19-case multi-persona RBAC & ground-truth evaluation report
+    │   └── agent_eval.json           # 10-scenario autonomous agent evaluation report
     ├── scripts/
-    │   └── make_sample_data.py       # Deterministic sample corpus generator
+    │   └── seed_db.py                # Deterministic ERP/CRM SQLite database seeder
     ├── src/
-    │   ├── config.py                 # RAG, ETL & ChromaDB configuration
-    │   ├── api/                      # Authenticated FastAPI service (/api/v1/rag/query, /personas)
-    │   ├── etl/                      # Multi-format extractors, recursive chunker, tenant-aware vector store
-    │   └── rag/                      # RBAC, query rewriter, ONNX/BM25 reranker, synthesizer, guardrails, CLI
-    └── tests/                        # Automated unit, integration, API, CLI & real neural model tests
+    │   ├── config.py                 # Agent, ERP/CRM & SQLite configuration
+    │   ├── api/                      # Authenticated FastAPI Agent Service (/api/v1/agent/*)
+    │   ├── erp_crm/                  # Transactional SQLite ERP/CRM/ITSM REST API & fault injection
+    │   └── agent/                    # ReAct orchestrator, planner, tools, HTTP retry, SQLite HITL store, CLI
+    └── tests/                        # Automated unit, integration, HITL, retry & injection tests
 ```
 
 ---
@@ -65,4 +81,18 @@ python -m pytest -q
 python -m src.rag.cli ingest
 python -m src.rag.cli ask --persona general_counsel --query "What is the Project Titan aggregate purchase price and founder buyout?"
 python -m src.rag.cli eval --out reports/rag_eval.json
+```
+
+---
+
+### 3. [Task 3: Autonomous Field Agent — Enterprise ERP/CRM Tool Orchestration](./Task_3_Autonomous_Field_Agent_ERP_CRM_Tool_Orchestration/README.md)
+An autonomous ReAct field agent that orchestrates multi-step workflows across transactional **ERP Inventory**, **CRM Lead Management**, and **ITSM Ticketing** REST APIs with pre-flight Pydantic v2 schema validation self-healing, exponential backoff with `Idempotency-Key` protection, SQLite-persisted Human-in-the-Loop (HITL) supervisor approval gates (`PENDING -> APPROVED -> CONSUMED`), operator session isolation, and `<tool_output_data>` indirect prompt-injection defense.
+
+```bash
+cd Task_3_Autonomous_Field_Agent_ERP_CRM_Tool_Orchestration
+pip install -r requirements.txt
+python -m pytest -v
+python -m src.agent.cli seed
+python -m src.agent.cli run --goal "Check inventory for SKU-GPU-H100 and inspect CRM lead LEAD-101"
+python -m src.agent.cli eval --out reports/agent_eval.json
 ```
