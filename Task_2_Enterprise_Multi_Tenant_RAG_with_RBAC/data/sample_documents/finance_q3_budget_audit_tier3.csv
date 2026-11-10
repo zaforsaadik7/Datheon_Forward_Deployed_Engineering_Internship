@@ -1,0 +1,5 @@
+cost_center_id,department,category,q3_allocated_usd,q3_actual_usd,variance_usd,audit_status,auditor_notes
+FIN-Q3-001,Engineering,Cloud Compute & GPU Clusters,1250000,1390000,-140000,Flagged,Overrun driven by H100 training burst in us-east-1
+FIN-Q3-002,Operations,Enterprise SaaS & Snowflake,450000,480000,-30000,Reviewed,Annual seat true-up and Snowflake warehouse scaling
+FIN-Q3-003,Legal,External Patent & M&A Counsel,620000,595000,25000,Approved,Under budget following early settlement of vendor review
+FIN-Q3-004,Executive,Strategic Reserve & Advisory,800000,800000,0,Approved,Retainer disbursements matched forecast

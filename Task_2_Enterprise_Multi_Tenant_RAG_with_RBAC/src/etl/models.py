@@ -1,0 +1,144 @@
+"""Pydantic data models for vector ETL segments, chunks, and tenant-aware metadata."""
+from datetime import date
+from typing import Optional, Dict, Union, Literal, List
+from pydantic import BaseModel, field_validator
+from ..config import DEPARTMENTS, TIERS, DEFAULT_TENANT
+
+
+class Segment(BaseModel):
+    """A citation-preserving unit of extracted text from a source document."""
+    text: str
+    page_number: Optional[int] = None
+    row_id: Optional[int] = None
+    section_title: Optional[str] = None
+
+
+class ManifestEntry(BaseModel):
+    """Metadata resolved for a document from manifest.yaml or filename fallback."""
+    department: str
+    clearance_tier: int
+    document_date: str
+    metadata_source: Literal["manifest", "filename"]
+    tenant_id: str = DEFAULT_TENANT
+
+    @field_validator("department")
+    @classmethod
+    def validate_dept(cls, v: str) -> str:
+        dept = v.lower()
+        if dept not in DEPARTMENTS:
+            raise ValueError(f"Unknown department '{v}'. Must be one of {sorted(list(DEPARTMENTS))}")
+        return dept
+
+    @field_validator("clearance_tier")
+    @classmethod
+    def validate_tier(cls, v: int) -> int:
+        if v not in TIERS:
+            raise ValueError(f"Invalid clearance tier {v}. Must be in {TIERS}")
+        return v
+
+    @field_validator("document_date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        try:
+            date.fromisoformat(v)
+        except Exception:
+            raise ValueError(f"Invalid ISO date '{v}'. Expected YYYY-MM-DD format.")
+        return v
+
+    @field_validator("tenant_id")
+    @classmethod
+    def validate_tenant(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("tenant_id must be a non-empty string.")
+        return cleaned
+
+
+class DocumentChunk(BaseModel):
+    """A semantically bounded chunk with complete operational and multi-tenant metadata."""
+    chunk_id: str
+    document_id: str
+    text: str
+    department: str
+    clearance_tier: int
+    document_date: str
+    source_file: str
+    file_type: str
+    chunk_index: int
+    tenant_id: str = DEFAULT_TENANT
+    page_number: Optional[int] = None
+    row_id: Optional[int] = None
+    section_title: Optional[str] = None
+    token_count: Optional[int] = None
+
+    @field_validator("department")
+    @classmethod
+    def validate_dept(cls, v: str) -> str:
+        dept = v.lower()
+        if dept not in DEPARTMENTS:
+            raise ValueError(f"Unknown department '{v}'. Must be one of {sorted(list(DEPARTMENTS))}")
+        return dept
+
+    @field_validator("clearance_tier")
+    @classmethod
+    def validate_tier(cls, v: int) -> int:
+        if v not in TIERS:
+            raise ValueError(f"Invalid clearance tier {v}. Must be in {TIERS}")
+        return v
+
+    @field_validator("document_date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        try:
+            date.fromisoformat(v)
+        except Exception:
+            raise ValueError(f"Invalid ISO date '{v}'. Expected YYYY-MM-DD format.")
+        return v
+
+    @field_validator("tenant_id")
+    @classmethod
+    def validate_tenant(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("tenant_id must be a non-empty string.")
+        return cleaned
+
+
+def to_chroma_metadata(chunk: DocumentChunk) -> Dict[str, Union[str, int, float, bool]]:
+    """
+    Convert a DocumentChunk to ChromaDB-safe flat metadata:
+    - Excludes 'text'
+    - Omits every key whose value is None (ChromaDB rejects None values)
+    """
+    raw_dict = chunk.model_dump()
+    raw_dict.pop("text", None)
+
+    chroma_meta: Dict[str, Union[str, int, float, bool]] = {}
+    for k, v in raw_dict.items():
+        if v is not None:
+            if isinstance(v, (str, int, float, bool)):
+                chroma_meta[k] = v
+            else:
+                chroma_meta[k] = str(v)
+
+    return chroma_meta
+
+
+class FailedDocument(BaseModel):
+    """Record of a document that failed at a specific ingestion stage."""
+    file: str
+    stage: Literal["discover", "metadata", "extract", "index"]
+    error: str
+
+
+class IngestReport(BaseModel):
+    """Comprehensive performance and outcome report for directory ingestion."""
+    documents_ok: int
+    documents_failed: List[FailedDocument]
+    chunks_written: int
+    bytes_read: int
+    extract_s: float
+    chunk_s: float
+    embed_s: float
+    write_s: float
+    total_s: float

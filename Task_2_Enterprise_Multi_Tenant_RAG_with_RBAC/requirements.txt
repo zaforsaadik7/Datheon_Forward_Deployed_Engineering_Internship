@@ -1,0 +1,13 @@
+chromadb==1.5.9
+pydantic==2.13.4
+pymupdf==1.28.2
+pyyaml==6.0.3
+rich==15.0.0
+psutil==7.2.2
+onnxruntime==1.27.0
+tokenizers==0.23.1
+huggingface_hub==1.23.0
+fastapi==0.162.2
+uvicorn==0.51.0
+httpx==0.28.1
+pytest==9.2.0
