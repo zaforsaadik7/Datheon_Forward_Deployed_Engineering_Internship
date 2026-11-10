@@ -124,6 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument("--concurrency", type=str, default="1,5,10,20")
     p_bench.add_argument("--requests-per-level", type=int, default=12)
     p_bench.add_argument("--warmup", type=int, default=3)
+    p_bench.add_argument("--slo-multiplier", type=float, default=1.0)
 
     return parser
 
@@ -166,6 +167,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             concurrency_levels=levels,
             requests_per_level=args.requests_per_level,
             warmup_requests=args.warmup,
+            slo_multiplier=args.slo_multiplier,
             output_path=args.out,
         )
         _print_benchmark_summary(report, console)

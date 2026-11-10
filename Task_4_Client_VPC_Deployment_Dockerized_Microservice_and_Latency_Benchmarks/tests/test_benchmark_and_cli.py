@@ -17,6 +17,7 @@ def test_live_uvicorn_subprocess_benchmark_all_5_workloads_and_environment_metad
         concurrency_levels=(1, 4),
         requests_per_level=4,
         warmup_requests=2,
+        slo_multiplier=3.0,
         output_path=report_path,
     )
 
@@ -109,6 +110,8 @@ def test_cli_subcommands_init_secrets_check_seed_verify_and_benchmark(tmp_path: 
             "2",
             "--warmup",
             "1",
+            "--slo-multiplier",
+            "3.0",
         ]
     )
     assert rc_bench == 0

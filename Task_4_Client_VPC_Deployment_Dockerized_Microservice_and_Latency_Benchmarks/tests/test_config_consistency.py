@@ -42,3 +42,21 @@ def test_benchmark_and_smoke_skus_exist_in_seed_data() -> None:
         used = set(re.findall(r"SKU-[A-Z0-9\-]+[A-Z0-9]", (ROOT / rel).read_text(encoding="utf-8")))
         assert used <= known, f"{rel} references unseeded SKUs: {used - known}"
 
+
+def test_requirements_docker_excludes_pytest_and_resilient_client_closes_cleanly(tmp_path: Path) -> None:
+    req_docker = (ROOT / "requirements-docker.txt").read_text(encoding="utf-8").lower()
+    assert "pytest" not in req_docker, "requirements-docker.txt must not install pytest in the runtime container"
+
+    from src.agent.http_client import ResilientERPClient
+    from src.erp_crm.app import create_erp_crm_app
+    from src.erp_crm.database import ERPCRMDatabase
+
+    erp_db = ERPCRMDatabase(tmp_path / "erp.db")
+    client = ResilientERPClient(app=create_erp_crm_app(db=erp_db))
+    res = client.request("GET", "/erp/v1/inventory")
+    assert res.status_code == 200
+    assert len(client._open_test_clients) == 1
+    client.close()
+    assert len(client._open_test_clients) == 0
+    assert getattr(client._local, "client", None) is None
+

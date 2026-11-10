@@ -36,7 +36,7 @@ SLO_P95_MS: Dict[str, float] = {
     "rag_authorized_query": 350.0,
     "rag_rbac_denial": 350.0,
     "agent_safe_read_workflow": 500.0,
-    "agent_hitl_approval_roundtrip": 1500.0,
+    "agent_hitl_approval_roundtrip": 750.0,
 }
 
 
@@ -132,6 +132,7 @@ async def _execute_all_workloads(
     concurrency_levels: Sequence[int],
     requests_per_level: int,
     warmup_requests: int,
+    slo_multiplier: float = 1.0,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     limits = httpx.Limits(max_connections=100, max_keepalive_connections=50)
     async with httpx.AsyncClient(base_url=base_url, timeout=15.0, limits=limits) as client:
@@ -220,7 +221,7 @@ async def _execute_all_workloads(
 
         workloads_report: Dict[str, Any] = {}
         for w_name in WORKLOAD_NAMES:
-            slo_ms = SLO_P95_MS[w_name]
+            slo_ms = round(SLO_P95_MS[w_name] * float(slo_multiplier), 2)
             w_fn = workload_fns[w_name]
             tier_results: List[Dict[str, Any]] = []
             for c_level in concurrency_levels:
@@ -266,6 +267,7 @@ def run_vpc_benchmarks(
     concurrency_levels: Sequence[int] = (1, 5, 10, 20),
     requests_per_level: int = 12,
     warmup_requests: int = 3,
+    slo_multiplier: float = 1.0,
     output_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
@@ -375,6 +377,7 @@ def run_vpc_benchmarks(
                     concurrency_levels=concurrency_levels,
                     requests_per_level=requests_per_level,
                     warmup_requests=warmup_requests,
+                    slo_multiplier=slo_multiplier,
                 )
             )
         finally:

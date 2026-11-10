@@ -155,6 +155,8 @@ def create_vpc_app(
         "rag_engine": None,
         "session_store": None,
         "tenant_executors": {},
+        "tenant_dbs": {},
+        "lifespan_active": False,
     }
 
     def _init_stores() -> None:
@@ -183,6 +185,9 @@ def create_vpc_app(
         if tenant_id not in executors:
             db_path = settings.var_dir / f"{tenant_id}_erp.db"
             erp_db = ERPCRMDatabase(db_path)
+            if state.get("lifespan_active"):
+                erp_db.open_keep_alive()
+            state["tenant_dbs"][tenant_id] = erp_db
             erp_app = create_erp_crm_app(db=erp_db)
             client = ResilientERPClient(app=erp_app, max_retries=3, base_backoff_s=0.01)
             executors[tenant_id] = ToolExecutor(client)
@@ -205,7 +210,22 @@ def create_vpc_app(
     async def lifespan(_app: FastAPI):
         if state["vector_store"] is None:
             _init_stores()
-        yield
+        state["lifespan_active"] = True
+        if state["session_store"] is not None:
+            state["session_store"].open_keep_alive()
+        for erp_db in state["tenant_dbs"].values():
+            erp_db.open_keep_alive()
+        try:
+            yield
+        finally:
+            state["lifespan_active"] = False
+            executors: Dict[str, ToolExecutor] = state.get("tenant_executors", {})
+            for executor in executors.values():
+                executor.client.close()
+            for erp_db in state.get("tenant_dbs", {}).values():
+                erp_db.close()
+            if state.get("session_store") is not None:
+                state["session_store"].close()
 
     app = FastAPI(
         title="Datheon Client VPC AI Microservice Gateway",

@@ -145,9 +145,9 @@ class AgentOrchestrator:
         t_start = time.perf_counter()
         current_session = self.session_store.get_session_result(session_id)
         goal = current_session.goal
+        steps = list(current_session.steps)
 
         while True:
-            steps = self.session_store.get_steps(session_id)
             total_retries = sum(s.retries_used for s in steps)
             validation_repairs = sum(1 for s in steps if s.status == "VALIDATION_ERROR")
 
@@ -179,6 +179,7 @@ class AgentOrchestrator:
                     status="FINAL",
                 )
                 self.session_store.append_step(session_id, final_step)
+                steps.append(final_step)
                 elapsed = current_session.total_ms + (time.perf_counter() - t_start) * 1000.0
                 self.session_store.update_session_state(
                     session_id,
@@ -208,6 +209,7 @@ class AgentOrchestrator:
                     http_status=422,
                 )
                 self.session_store.append_step(session_id, err_step)
+                steps.append(err_step)
                 continue
 
             norm_args = self.executor.normalize_args(tool_name, raw_args)
@@ -239,6 +241,7 @@ class AgentOrchestrator:
                     status="AWAITING_APPROVAL",
                 )
                 self.session_store.append_step(session_id, pause_step)
+                steps.append(pause_step)
                 elapsed = current_session.total_ms + (time.perf_counter() - t_start) * 1000.0
                 self.session_store.update_session_state(
                     session_id,
@@ -272,4 +275,5 @@ class AgentOrchestrator:
                 latency_ms=exec_out.latency_ms,
             )
             self.session_store.append_step(session_id, step_record)
+            steps.append(step_record)
 

@@ -40,6 +40,8 @@ class ResilientERPClient:
         self.base_backoff_s = base_backoff_s
         self._app = app
         self._local = threading.local()
+        self._lock = threading.Lock()
+        self._open_test_clients: list[TestClient] = []
         if app is not None:
             self._client: Any = None
         else:
@@ -52,9 +54,29 @@ class ResilientERPClient:
         if client is None:
             tc = TestClient(self._app, raise_server_exceptions=False)
             tc.__enter__()
+            with self._lock:
+                self._open_test_clients.append(tc)
             self._local.client = tc
             return tc
         return client
+
+    def close(self) -> None:
+        """Close all per-thread TestClient portals or the underlying httpx.Client."""
+        with self._lock:
+            clients = list(self._open_test_clients)
+            self._open_test_clients.clear()
+        for tc in clients:
+            try:
+                tc.__exit__(None, None, None)
+            except Exception:
+                pass
+        if hasattr(self._local, "client"):
+            self._local.client = None
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:
+                pass
 
     def request(
         self,

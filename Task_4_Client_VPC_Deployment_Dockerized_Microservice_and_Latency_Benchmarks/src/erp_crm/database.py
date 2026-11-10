@@ -45,7 +45,24 @@ class ERPCRMDatabase:
     def __init__(self, db_path: Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._anchor_conn: Optional[sqlite3.Connection] = None
         self._init_schema()
+
+    def open_keep_alive(self) -> None:
+        """Keep a WAL anchor connection open during server lifespan so -shm stays mapped."""
+        if self._anchor_conn is None:
+            self._anchor_conn = sqlite3.connect(str(self.db_path), timeout=5.0, check_same_thread=False)
+            self._anchor_conn.execute("PRAGMA journal_mode=WAL;")
+            self._anchor_conn.execute("PRAGMA synchronous=NORMAL;")
+
+    def close(self) -> None:
+        """Close the WAL anchor connection on server shutdown."""
+        if self._anchor_conn is not None:
+            try:
+                self._anchor_conn.close()
+            except Exception:
+                pass
+            self._anchor_conn = None
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
