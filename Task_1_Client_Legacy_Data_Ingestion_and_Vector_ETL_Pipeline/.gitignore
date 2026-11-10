@@ -1,5 +1,4 @@
 data/chroma_db/
-reports/
 __pycache__/
 *.py[cod]
 *$py.class
