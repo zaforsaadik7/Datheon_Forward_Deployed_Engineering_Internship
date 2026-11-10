@@ -1,0 +1,89 @@
+services:
+  fde-vpc-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PRELOAD_HF_MODELS: "false"
+    image: datheon/fde-vpc-gateway:1.0.0
+    container_name: fde-vpc-api
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      FDE_ENV: "production"
+      FDE_VAR_DIR: "/app/var"
+      FDE_AIRGAPPED_MODE: "true"
+      FDE_PLANNER_MODE: "rule_based"
+      FDE_AUTO_SEED_ON_STARTUP: "true"
+      FDE_ALLOW_SAMPLE_SEED: "true"
+      FDE_API_KEYS_FILE: "/run/secrets/fde_api_keys_json"
+      FDE_METRICS_TOKEN_FILE: "/run/secrets/fde_metrics_token"
+      FDE_MAX_BODY_BYTES: "1048576"
+      FDE_RATE_LIMIT_RPS: "50.0"
+      FDE_RATE_LIMIT_BURST: "100"
+    secrets:
+      - fde_api_keys_json
+      - fde_metrics_token
+    volumes:
+      - fde_vpc_var:/app/var
+    networks:
+      - vpc_internal_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: fde-vpc-prometheus
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - "9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    secrets:
+      - fde_metrics_token
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - vpc_internal_net
+    depends_on:
+      fde-vpc-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+secrets:
+  fde_api_keys_json:
+    file: ./deploy/secrets/fde_api_keys.json
+  fde_metrics_token:
+    file: ./deploy/secrets/fde_metrics_token.txt
+
+volumes:
+  fde_vpc_var:
+  prometheus_data:
+
+networks:
+  vpc_internal_net:
+    driver: bridge

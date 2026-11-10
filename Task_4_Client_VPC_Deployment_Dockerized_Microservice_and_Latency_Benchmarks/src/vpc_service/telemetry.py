@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, ConfigDict
@@ -79,6 +79,17 @@ class VPCTelemetry:
     7. fde_hitl_pending_approvals
     8. fde_dependency_up{component}
     """
+
+    METRIC_NAMES: Tuple[str, ...] = (
+        "fde_http_requests_total",
+        "fde_http_errors_total",
+        "fde_http_request_duration_seconds",
+        "fde_llm_tokens_total",
+        "fde_rag_queries_total",
+        "fde_agent_tool_calls_total",
+        "fde_hitl_pending_approvals",
+        "fde_dependency_up",
+    )
 
     def __init__(self) -> None:
         self.registry = CollectorRegistry(auto_describe=True)

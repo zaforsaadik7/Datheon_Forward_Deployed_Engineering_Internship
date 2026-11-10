@@ -1,0 +1,52 @@
+groups:
+  - name: fde_vpc_gateway_slo_alerts
+    interval: 10s
+    rules:
+      - alert: FDEHighErrorRate
+        expr: |
+          (
+            sum(rate(fde_http_errors_total{status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(fde_http_requests_total[5m])), 0.001)
+          ) > 0.02
+        for: 2m
+        labels:
+          severity: critical
+          service: fde-vpc-gateway
+        annotations:
+          summary: "High 5xx error ratio (>2%) on Datheon Client VPC Gateway"
+          description: "5xx HTTP error rate has exceeded 2% of total traffic over a 5-minute window."
+
+      - alert: FDEHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(fde_http_request_duration_seconds_bucket{route=~"/api/v1/.*"}[5m])) by (le, route)
+          ) > 0.75
+        for: 3m
+        labels:
+          severity: warning
+          service: fde-vpc-gateway
+        annotations:
+          summary: "p95 API latency above 750ms SLO on Datheon Client VPC Gateway"
+          description: "Route {{ $labels.route }} p95 latency exceeded 0.75s over the last 5 minutes."
+
+      - alert: FDEDependencyDown
+        expr: fde_dependency_up < 1
+        for: 1m
+        labels:
+          severity: critical
+          service: fde-vpc-gateway
+        annotations:
+          summary: "VPC dependency {{ $labels.component }} is unhealthy"
+          description: "Component {{ $labels.component }} reported fde_dependency_up == 0 for more than 1 minute."
+
+      - alert: FDEHitlBacklog
+        expr: fde_hitl_pending_approvals > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: fde-vpc-gateway
+        annotations:
+          summary: "Supervisor HITL approval queue backlog (>20 pending requests)"
+          description: "There are {{ $value }} pending supervisor approvals waiting in the HITL queue."
