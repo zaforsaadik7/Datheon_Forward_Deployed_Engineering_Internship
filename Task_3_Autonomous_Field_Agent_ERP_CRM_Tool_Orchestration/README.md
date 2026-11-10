@@ -6,6 +6,42 @@ An enterprise-grade ReAct (Reason + Act) autonomous field agent that orchestrate
 
 ---
 
+## Folder Structure
+
+```text
+Task_3_Autonomous_Field_Agent_ERP_CRM_Tool_Orchestration/
+├── README.md                         # Architecture, role matrix, 10-scenario evaluation & quickstart
+├── requirements.txt                  # Pinned Python dependencies
+├── pytest.ini                        # Pytest configuration
+├── data/
+│   └── seed_enterprise_data.json     # Seed inventory SKUs, CRM leads (including hostile LEAD-104) & tickets
+├── reports/
+│   └── agent_eval.json               # 10-scenario autonomous agent evaluation report
+├── scripts/
+│   └── seed_db.py                    # Deterministic ERP/CRM SQLite database seeder
+├── src/
+│   ├── config.py                     # Agent, ERP/CRM & SQLite configuration
+│   ├── api/
+│   │   └── app.py                    # Authenticated FastAPI Agent Service (/api/v1/agent/*)
+│   ├── erp_crm/
+│   │   ├── models.py                 # ERP inventory, CRM lead state-machine & ITSM ticket schemas
+│   │   ├── database.py               # Transactional SQLite database with Idempotency-Key store
+│   │   └── app.py                    # Mock Enterprise ERP/CRM/ITSM REST service + fault injection
+│   └── agent/
+│       ├── models.py                 # ReAct step, session, tool call & approval schemas
+│       ├── auth.py                   # Operator/supervisor key registry & code-enforced sensitivity policy
+│       ├── http_client.py            # ResilientERPClient with exponential backoff & Idempotency-Key
+│       ├── tools.py                  # Pre-flight Pydantic v2 validator & <tool_output_data> sanitizer
+│       ├── session_store.py          # SQLite SessionStore & single-use expiring HITL approvals
+│       ├── planner.py                # RuleBasedReActPlanner & OpenAIFunctionPlanner
+│       ├── orchestrator.py           # ReAct loop, self-healing repair & HITL pause/resume engine
+│       ├── eval.py                   # 10-scenario evaluation suite (retries, repairs, HITL, injection)
+│       └── cli.py                    # Typer + Rich CLI (seed, run, approve, sessions, eval, serve)
+└── tests/                            # Automated unit, integration, HITL, retry & injection test suite
+```
+
+---
+
 ## Architecture Overview
 
 ```mermaid
