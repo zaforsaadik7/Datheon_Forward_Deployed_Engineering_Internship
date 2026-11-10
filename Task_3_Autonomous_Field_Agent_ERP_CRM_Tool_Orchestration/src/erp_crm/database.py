@@ -1,9 +1,10 @@
 """SQLite persistence layer for Mock Enterprise ERP, CRM, and ITSM with idempotency and state transitions."""
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 import uuid
 
 from .models import (
@@ -46,10 +47,15 @@ class ERPCRMDatabase:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self) -> None:
         with self._connect() as conn:
