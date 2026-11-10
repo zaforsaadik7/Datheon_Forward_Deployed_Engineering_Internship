@@ -4,7 +4,7 @@ Write-Host "[1/6] Initializing local development secrets (0644 permissions for n
 python -m src.vpc_service.cli init-dev-secrets --out-dir deploy/secrets
 
 $keysJson = Get-Content "deploy/secrets/fde_api_keys.json" | ConvertFrom-Json
-$engKey = ($keysJson.api_keys.PSObject.Properties | Where-Object { $_.Value.principal_id -eq "acme_field_engineer" } | Select-Object -First 1).Name
+$engKey = ($keysJson.PSObject.Properties | Where-Object { $_.Value.principal_id -eq "acme_field_engineer" } | Select-Object -First 1).Name
 $metricsToken = (Get-Content "deploy/secrets/fde_metrics_token.txt" -Raw).Trim()
 
 try {

@@ -126,7 +126,10 @@ def load_secret_bundle(
 
     eff_keys_file = api_keys_file
     if eff_keys_file is None:
-        env_kf = os.environ.get("FDE_API_KEYS_JSON_FILE", "").strip()
+        env_kf = (
+            os.environ.get("FDE_API_KEYS_JSON_FILE", "").strip()
+            or os.environ.get("FDE_API_KEYS_FILE", "").strip()
+        )
         if env_kf:
             eff_keys_file = Path(env_kf)
 

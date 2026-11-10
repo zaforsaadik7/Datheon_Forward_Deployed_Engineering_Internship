@@ -197,12 +197,16 @@ class VPCTelemetry:
         secret_bundle: Optional[SecretBundle],
         vector_store: Optional[VectorStore],
         session_store: Optional[SessionStore],
+        precomputed_readiness: Optional[dict] = None,
     ) -> None:
-        _, readiness = evaluate_readiness(
-            var_dir=var_dir,
-            secret_bundle=secret_bundle,
-            vector_store=vector_store,
-        )
+        if precomputed_readiness is not None:
+            readiness = precomputed_readiness
+        else:
+            _, readiness = evaluate_readiness(
+                var_dir=var_dir,
+                secret_bundle=secret_bundle,
+                vector_store=vector_store,
+            )
         checks = readiness.get("checks", {})
         for comp in ("sqlite_db", "chroma_vector_store", "secrets_manager"):
             val = 1.0 if checks.get(comp) == "ok" else 0.0

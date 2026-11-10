@@ -1,0 +1,373 @@
+{
+  "generated_at": "2026-11-10T19:34:01.993705+00:00",
+  "service": "datheon-fde-vpc-gateway",
+  "overall_passed": true,
+  "environment": {
+    "execution_mode": "local_uvicorn_subprocess",
+    "containerized": false,
+    "docker_cli_available": false,
+    "embedding_backend": "DeterministicHashEmbedding",
+    "reranker_backend": "LexicalCrossEncoder",
+    "planner_backend": "RuleBasedReActPlanner",
+    "sqlite_journal_mode": "WAL",
+    "sqlite_busy_timeout_ms": 5000,
+    "python_version": "3.14.5",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "cpu_count": 12,
+    "concurrency_levels": [
+      1,
+      5,
+      10,
+      20
+    ],
+    "requests_per_level": 12,
+    "warmup_requests": 3
+  },
+  "slo_targets_p95_ms": {
+    "health_and_readiness": 50.0,
+    "rag_authorized_query": 350.0,
+    "rag_rbac_denial": 350.0,
+    "agent_safe_read_workflow": 500.0,
+    "agent_hitl_approval_roundtrip": 1500.0
+  },
+  "workloads": {
+    "health_and_readiness": {
+      "slo_p95_target_ms": 50.0,
+      "passed_all_tiers": true,
+      "concurrency_results": [
+        {
+          "concurrency": 1,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 1.078,
+          "p50_ms": 3.879,
+          "p95_ms": 6.35,
+          "p99_ms": 6.925,
+          "max_ms": 7.068,
+          "mean_ms": 3.248,
+          "rps": 306.17,
+          "slo_p95_target_ms": 50.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 5,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 1.313,
+          "p50_ms": 6.038,
+          "p95_ms": 40.576,
+          "p99_ms": 51.598,
+          "max_ms": 54.354,
+          "mean_ms": 12.24,
+          "rps": 218.61,
+          "slo_p95_target_ms": 50.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 10,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 4.47,
+          "p50_ms": 10.489,
+          "p95_ms": 28.228,
+          "p99_ms": 28.526,
+          "max_ms": 28.6,
+          "mean_ms": 13.093,
+          "rps": 401.1,
+          "slo_p95_target_ms": 50.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 20,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 5.614,
+          "p50_ms": 10.396,
+          "p95_ms": 44.614,
+          "p99_ms": 45.216,
+          "max_ms": 45.367,
+          "mean_ms": 17.615,
+          "rps": 255.01,
+          "slo_p95_target_ms": 50.0,
+          "passed_slo": true
+        }
+      ]
+    },
+    "rag_authorized_query": {
+      "slo_p95_target_ms": 350.0,
+      "passed_all_tiers": true,
+      "concurrency_results": [
+        {
+          "concurrency": 1,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 4.251,
+          "p50_ms": 4.706,
+          "p95_ms": 5.969,
+          "p99_ms": 6.388,
+          "max_ms": 6.493,
+          "mean_ms": 4.886,
+          "rps": 203.89,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 5,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 5.961,
+          "p50_ms": 15.249,
+          "p95_ms": 16.814,
+          "p99_ms": 17.07,
+          "max_ms": 17.134,
+          "mean_ms": 14.098,
+          "rps": 316.53,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 10,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 11.248,
+          "p50_ms": 25.744,
+          "p95_ms": 30.545,
+          "p99_ms": 34.003,
+          "max_ms": 34.868,
+          "mean_ms": 24.265,
+          "rps": 328.05,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 20,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 13.998,
+          "p50_ms": 31.764,
+          "p95_ms": 32.953,
+          "p99_ms": 33.003,
+          "max_ms": 33.016,
+          "mean_ms": 28.661,
+          "rps": 343.13,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        }
+      ]
+    },
+    "rag_rbac_denial": {
+      "slo_p95_target_ms": 350.0,
+      "passed_all_tiers": true,
+      "concurrency_results": [
+        {
+          "concurrency": 1,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 3.821,
+          "p50_ms": 4.118,
+          "p95_ms": 4.633,
+          "p99_ms": 4.686,
+          "max_ms": 4.7,
+          "mean_ms": 4.158,
+          "rps": 239.59,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 5,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 4.956,
+          "p50_ms": 13.016,
+          "p95_ms": 26.904,
+          "p99_ms": 26.962,
+          "max_ms": 26.976,
+          "mean_ms": 16.937,
+          "rps": 265.73,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 10,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 10.542,
+          "p50_ms": 21.631,
+          "p95_ms": 24.027,
+          "p99_ms": 24.308,
+          "max_ms": 24.379,
+          "mean_ms": 19.431,
+          "rps": 436.01,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 20,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 11.139,
+          "p50_ms": 29.23,
+          "p95_ms": 30.734,
+          "p99_ms": 30.909,
+          "max_ms": 30.952,
+          "mean_ms": 25.682,
+          "rps": 367.83,
+          "slo_p95_target_ms": 350.0,
+          "passed_slo": true
+        }
+      ]
+    },
+    "agent_safe_read_workflow": {
+      "slo_p95_target_ms": 500.0,
+      "passed_all_tiers": true,
+      "concurrency_results": [
+        {
+          "concurrency": 1,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 43.526,
+          "p50_ms": 44.437,
+          "p95_ms": 45.552,
+          "p99_ms": 45.681,
+          "max_ms": 45.713,
+          "mean_ms": 44.553,
+          "rps": 22.44,
+          "slo_p95_target_ms": 500.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 5,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 60.985,
+          "p50_ms": 114.1,
+          "p95_ms": 166.578,
+          "p99_ms": 167.608,
+          "max_ms": 167.865,
+          "mean_ms": 119.656,
+          "rps": 38.68,
+          "slo_p95_target_ms": 500.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 10,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 57.97,
+          "p50_ms": 194.159,
+          "p95_ms": 361.296,
+          "p99_ms": 394.258,
+          "max_ms": 402.498,
+          "mean_ms": 199.718,
+          "rps": 29.68,
+          "slo_p95_target_ms": 500.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 20,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 98.794,
+          "p50_ms": 195.974,
+          "p95_ms": 375.133,
+          "p99_ms": 401.917,
+          "max_ms": 408.613,
+          "mean_ms": 213.408,
+          "rps": 29.23,
+          "slo_p95_target_ms": 500.0,
+          "passed_slo": true
+        }
+      ]
+    },
+    "agent_hitl_approval_roundtrip": {
+      "slo_p95_target_ms": 1500.0,
+      "passed_all_tiers": true,
+      "concurrency_results": [
+        {
+          "concurrency": 1,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 112.921,
+          "p50_ms": 121.75,
+          "p95_ms": 569.49,
+          "p99_ms": 941.188,
+          "max_ms": 1034.113,
+          "mean_ms": 202.096,
+          "rps": 4.95,
+          "slo_p95_target_ms": 1500.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 5,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 152.317,
+          "p50_ms": 272.721,
+          "p95_ms": 407.039,
+          "p99_ms": 438.443,
+          "max_ms": 446.294,
+          "mean_ms": 284.24,
+          "rps": 15.45,
+          "slo_p95_target_ms": 1500.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 10,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 252.278,
+          "p50_ms": 452.029,
+          "p95_ms": 687.939,
+          "p99_ms": 712.622,
+          "max_ms": 718.793,
+          "mean_ms": 470.571,
+          "rps": 16.69,
+          "slo_p95_target_ms": 1500.0,
+          "passed_slo": true
+        },
+        {
+          "concurrency": 20,
+          "total_requests": 12,
+          "errors": 0,
+          "error_rate": 0.0,
+          "min_ms": 255.568,
+          "p50_ms": 425.164,
+          "p95_ms": 750.614,
+          "p99_ms": 812.024,
+          "max_ms": 827.376,
+          "mean_ms": 451.325,
+          "rps": 14.45,
+          "slo_p95_target_ms": 1500.0,
+          "passed_slo": true
+        }
+      ]
+    }
+  },
+  "telemetry_verification": {
+    "scraped_live_uvicorn_metrics": true,
+    "http_requests_total": 256,
+    "http_errors_total": 0,
+    "rag_queries_total": 102,
+    "agent_tool_calls_total": 153,
+    "llm_tokens_estimated_total": 44404
+  }
+}

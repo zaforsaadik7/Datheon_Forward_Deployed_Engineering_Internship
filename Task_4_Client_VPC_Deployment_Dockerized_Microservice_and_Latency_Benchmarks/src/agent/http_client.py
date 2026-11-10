@@ -1,5 +1,6 @@
 """Resilient HTTP client for ERP/CRM/ITSM endpoints with exponential backoff and Idempotency-Key support."""
 from dataclasses import dataclass
+import threading
 import time
 from typing import Any, Dict, Optional
 from fastapi import FastAPI
@@ -37,10 +38,23 @@ class ResilientERPClient:
     ) -> None:
         self.max_retries = max_retries
         self.base_backoff_s = base_backoff_s
+        self._app = app
+        self._local = threading.local()
         if app is not None:
-            self._client: Any = TestClient(app, raise_server_exceptions=False)
+            self._client: Any = None
         else:
             self._client = httpx.Client(base_url=base_url, timeout=timeout_s)
+
+    def _get_active_client(self) -> Any:
+        if self._app is None:
+            return self._client
+        client = getattr(self._local, "client", None)
+        if client is None:
+            tc = TestClient(self._app, raise_server_exceptions=False)
+            tc.__enter__()
+            self._local.client = tc
+            return tc
+        return client
 
     def request(
         self,
@@ -60,7 +74,8 @@ class ResilientERPClient:
 
         while True:
             try:
-                resp = self._client.request(
+                active_client = self._get_active_client()
+                resp = active_client.request(
                     method=method.upper(),
                     url=path,
                     params=params,

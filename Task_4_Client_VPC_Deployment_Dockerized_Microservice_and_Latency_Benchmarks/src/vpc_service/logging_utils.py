@@ -4,14 +4,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import logging
+import sys
 from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger("fde.vpc_service")
 if not logger.handlers:
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 
 def emit_structured_log(

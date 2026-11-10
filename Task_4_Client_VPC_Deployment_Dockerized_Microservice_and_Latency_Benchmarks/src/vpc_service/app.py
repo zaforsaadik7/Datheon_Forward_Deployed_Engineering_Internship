@@ -243,6 +243,7 @@ def create_vpc_app(
             secret_bundle=secret_bundle,
             vector_store=state["vector_store"],
             session_store=state["session_store"],
+            precomputed_readiness=body,
         )
         return JSONResponse(status_code=code, content=body)
 

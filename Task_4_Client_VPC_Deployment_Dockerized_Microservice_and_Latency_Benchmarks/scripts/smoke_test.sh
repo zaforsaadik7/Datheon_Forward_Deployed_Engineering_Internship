@@ -4,7 +4,7 @@ set -euo pipefail
 echo "[1/6] Initializing local development secrets (0644 permissions for non-root containers)..."
 python3 -m src.vpc_service.cli init-dev-secrets --out-dir deploy/secrets
 
-ENG_KEY=$(python3 -c "import json; d=json.load(open('deploy/secrets/fde_api_keys.json'))['api_keys']; print(next(k for k,v in d.items() if v['principal_id']=='acme_field_engineer'))")
+ENG_KEY=$(python3 -c "import json; d=json.load(open('deploy/secrets/fde_api_keys.json')); print(next(k for k,v in d.items() if v['principal_id']=='acme_field_engineer'))")
 METRICS_TOKEN=$(tr -d '\r\n' < deploy/secrets/fde_metrics_token.txt)
 
 cleanup() {

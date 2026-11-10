@@ -89,7 +89,17 @@ def load_vpc_settings(
         else int(os.environ.get("FDE_RATE_LIMIT_BURST", "1000"))
     )
 
-    env_keys_file = os.environ.get("FDE_API_KEYS_JSON_FILE", "").strip()
+    env_var_dir = os.environ.get("FDE_VAR_DIR", "").strip()
+    resolved_var_dir = (
+        Path(var_dir)
+        if var_dir is not None
+        else (Path(env_var_dir) if env_var_dir else BASE_DIR / "var")
+    )
+
+    env_keys_file = (
+        os.environ.get("FDE_API_KEYS_JSON_FILE", "").strip()
+        or os.environ.get("FDE_API_KEYS_FILE", "").strip()
+    )
     env_metrics_file = os.environ.get("FDE_METRICS_TOKEN_FILE", "").strip()
 
     return VPCSettings(
@@ -101,7 +111,7 @@ def load_vpc_settings(
         max_body_bytes=resolved_max_body,
         rate_limit_rps=resolved_rps,
         rate_limit_burst=resolved_burst,
-        var_dir=Path(var_dir) if var_dir is not None else BASE_DIR / "var",
+        var_dir=resolved_var_dir,
         api_keys_file=api_keys_file or (Path(env_keys_file) if env_keys_file else None),
         metrics_token_file=metrics_token_file or (Path(env_metrics_file) if env_metrics_file else None),
         llm_base_url=os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1"),
