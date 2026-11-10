@@ -59,6 +59,10 @@ def test_is_chunk_authorized_enforces_tier1_public_and_tenant_boundary():
     # Tier 1 operations in acme_corp -> DENIED for external_tenant (globex_inc)
     assert is_chunk_authorized(meta_t1_ops, globex_p) is False
 
+    # Missing tenant_id -> fail-closed (DENIED even for Tier 1)
+    assert is_chunk_authorized({"clearance_tier": 1, "department": "operations"}, eng_p) is False
+    assert is_chunk_authorized({"tenant_id": "", "clearance_tier": 1, "department": "operations"}, eng_p) is False
+
 
 def test_post_retrieval_guard_raises_rbac_violation_error():
     eng_p = PERSONAS["cloud_engineer"]

@@ -37,6 +37,14 @@ def test_api_returns_401_for_missing_or_invalid_api_key(tmp_path: Path, tmp_stor
     )
     assert r_bad.status_code == 401
 
+    # GET /api/v1/rag/personas also requires authentication
+    r_personas_unauth = client.get("/api/v1/rag/personas")
+    assert r_personas_unauth.status_code == 401
+
+    r_personas_auth = client.get("/api/v1/rag/personas", headers={"X-API-Key": "key-ops-tier1"})
+    assert r_personas_auth.status_code == 200
+    assert all(p["tenant_id"] == "acme_corp" for p in r_personas_auth.json()["personas"])
+
 
 def test_api_rejects_client_supplied_clearance_tier_or_departments_with_422(tmp_path: Path, tmp_store):
     """

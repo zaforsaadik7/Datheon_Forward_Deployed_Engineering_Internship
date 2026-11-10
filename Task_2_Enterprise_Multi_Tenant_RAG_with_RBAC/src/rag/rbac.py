@@ -1,5 +1,7 @@
 """RBAC principals, API key authentication, defense-in-depth post-retrieval verification, and audit logging."""
 from datetime import datetime, timezone
+import json
+import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from ..config import DEPARTMENTS, DEFAULT_TENANT
 from ..etl.vector_store import QueryHit
@@ -66,14 +68,41 @@ PERSONAS: Dict[str, UserPrincipal] = {
     ),
 }
 
-API_KEY_REGISTRY: Dict[str, UserPrincipal] = {
-    "key-ops-tier1": PERSONAS["ops_associate"],
-    "key-eng-tier2": PERSONAS["cloud_engineer"],
-    "key-hr-tier2": PERSONAS["hr_specialist"],
-    "key-fin-tier3": PERSONAS["finance_director"],
-    "key-leg-tier4": PERSONAS["general_counsel"],
-    "key-globex-tier4": PERSONAS["external_tenant"],
+_DEFAULT_DEMO_KEYS: Dict[str, str] = {
+    "ops_associate": "key-ops-tier1",
+    "cloud_engineer": "key-eng-tier2",
+    "hr_specialist": "key-hr-tier2",
+    "finance_director": "key-fin-tier3",
+    "general_counsel": "key-leg-tier4",
+    "external_tenant": "key-globex-tier4",
 }
+
+
+def load_api_key_registry() -> Dict[str, UserPrincipal]:
+    """
+    Build the API key -> UserPrincipal registry from environment variables:
+    - RAG_API_KEYS_JSON: JSON mapping of {"<api_key>": "<persona_id>"}
+    - RAG_API_KEY_<PERSONA_ID_UPPER>: per-persona key override
+    Falls back to local demo keys when environment variables are not set.
+    """
+    registry: Dict[str, UserPrincipal] = {}
+    raw_json = os.environ.get("RAG_API_KEYS_JSON", "").strip()
+    if raw_json:
+        parsed = json.loads(raw_json)
+        for token, persona_id in parsed.items():
+            if persona_id in PERSONAS and str(token).strip():
+                registry[str(token).strip()] = PERSONAS[persona_id]
+        return registry
+
+    for persona_id, principal in PERSONAS.items():
+        env_var = f"RAG_API_KEY_{persona_id.upper()}"
+        token = os.environ.get(env_var, _DEFAULT_DEMO_KEYS[persona_id]).strip()
+        if token:
+            registry[token] = principal
+    return registry
+
+
+API_KEY_REGISTRY: Dict[str, UserPrincipal] = load_api_key_registry()
 
 
 def authenticate_api_key(
@@ -91,6 +120,9 @@ def authenticate_api_key(
             token = token[7:].strip()
         if token in API_KEY_REGISTRY:
             return API_KEY_REGISTRY[token]
+        env_registry = load_api_key_registry()
+        if token in env_registry:
+            return env_registry[token]
         raise AuthenticationError("Invalid API key.")
 
     if allow_dev_header and dev_persona is not None and dev_persona.strip():
@@ -116,7 +148,7 @@ def authorize_principal(principal: UserPrincipal) -> None:
 def is_chunk_authorized(metadata: Dict[str, Any], principal: UserPrincipal) -> bool:
     """
     Check whether a single chunk's metadata satisfies the principal's RBAC & tenant policy:
-    1. chunk_tenant == principal.tenant_id
+    1. Fail-closed on missing/blank tenant_id; chunk_tenant must equal principal.tenant_id
     2. Tier-1 Public Rule: within the same tenant, clearance_tier == 1 is readable by any
        authenticated user with non-empty departments; Tiers 2-4 require both
        clearance_tier <= principal.clearance_tier and department in principal.departments.
@@ -124,8 +156,10 @@ def is_chunk_authorized(metadata: Dict[str, Any], principal: UserPrincipal) -> b
     if len(principal.departments) == 0:
         return False
 
-    chunk_tenant = str(metadata.get("tenant_id", DEFAULT_TENANT)).strip()
-    if chunk_tenant != principal.tenant_id:
+    raw_tenant = metadata.get("tenant_id")
+    if not isinstance(raw_tenant, str) or not raw_tenant.strip():
+        return False
+    if raw_tenant.strip() != principal.tenant_id:
         return False
 
     raw_tier = metadata.get("clearance_tier")
@@ -245,4 +279,3 @@ class AuditLogger:
         )
         self._events.append(event)
         return event
-

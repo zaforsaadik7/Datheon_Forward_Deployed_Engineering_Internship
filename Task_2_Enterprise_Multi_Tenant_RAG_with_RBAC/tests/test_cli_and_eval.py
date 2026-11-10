@@ -39,14 +39,14 @@ def test_manifest_ground_truth_allowed_files_matrix(tmp_path: Path):
 
 
 def test_eval_suite_zero_leaks_and_negative_control_catches_leaks_when_rbac_disabled(
-    tmp_path: Path, tmp_store
+    tmp_path: Path, tmp_store, monkeypatch
 ):
     """
     Fix #9:
     1. With RBAC enabled, rbac_leaks == 0, abstention_accuracy == 1.0, and gold answer/locator
        accuracy == 1.0 judged against manifest.yaml ground truth.
-    2. With RBAC disabled (_unsafe_disable_rbac=True), the SAME evaluation suite detects
-       rbac_leaks > 0, proving the evaluation harness genuinely catches leaks.
+    2. With RBAC disabled via a test-only unfiltered store wrapper, the SAME evaluation suite
+       detects rbac_leaks > 0, proving the evaluation harness genuinely catches leaks.
     """
     corpus_dir = tmp_path / "sample_documents"
     generate_sample_corpus(corpus_dir)
@@ -60,18 +60,35 @@ def test_eval_suite_zero_leaks_and_negative_control_catches_leaks_when_rbac_disa
         audit_logger=AuditLogger(),
     )
     safe_report = run_rbac_evaluation(safe_engine, manifest_path=manifest_path)
-    assert safe_report["summary"]["total_cases"] >= 16
+    assert safe_report["summary"]["total_cases"] == 19
     assert safe_report["summary"]["rbac_leaks"] == 0
     assert safe_report["summary"]["abstention_accuracy"] == 1.0
     assert safe_report["summary"]["answer_accuracy"] == 1.0
     assert safe_report["summary"]["citation_locator_accuracy"] == 1.0
 
-    # 2. Negative-control run with RBAC disabled -> MUST catch leaks!
+    # 2. Negative-control run with a test-only unfiltered wrapper -> MUST catch leaks!
+    class UnfilteredStoreWrapper:
+        def query_by_tier_and_department(
+            self,
+            query_text: str,
+            user_tier: int,
+            user_departments=None,
+            tenant_id: str = "acme_corp",
+            top_k: int = 5,
+        ):
+            return tmp_store.query_by_tier_and_department(
+                query_text=query_text,
+                user_tier=4,
+                user_departments=None,
+                tenant_id="acme_corp",
+                top_k=top_k,
+            )
+
+    monkeypatch.setattr("src.rag.engine.assert_hits_authorized", lambda hits, p: list(hits))
     unsafe_engine = MultiTenantRAGEngine(
-        store=tmp_store,
+        store=UnfilteredStoreWrapper(),  # type: ignore[arg-type]
         reranker=LexicalReranker(),
         audit_logger=AuditLogger(),
-        _unsafe_disable_rbac=True,
     )
     unsafe_report = run_rbac_evaluation(unsafe_engine, manifest_path=manifest_path)
     assert unsafe_report["summary"]["rbac_leaks"] > 0

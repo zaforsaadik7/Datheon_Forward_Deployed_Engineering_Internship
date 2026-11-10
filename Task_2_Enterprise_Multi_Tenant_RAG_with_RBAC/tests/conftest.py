@@ -1,80 +1,15 @@
-"""Shared pytest fixtures, keyword-aware deterministic FakeEmbedding, and test helpers."""
-import hashlib
-import math
-import re
+"""Shared pytest fixtures, domain-agnostic feature-hashing FakeEmbedding, and test helpers."""
 from pathlib import Path
 from typing import Callable, List
 import fitz
 import pytest
-from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 
 from src.config import DEFAULT_TENANT
 from src.etl.models import DocumentChunk
 from src.etl.vector_store import VectorStore
+from src.rag.cli import DeterministicHashEmbedding
 
-# 16 semantic topic buckets so fast tests with FakeEmbedding still route domain queries
-# to the matching sample documents without loading external neural weights.
-TOPIC_BUCKETS: tuple[tuple[str, ...], ...] = (
-    ("fido2", "mfa", "bitlocker", "filevault", "crowdstrike", "mdm", "workstations"),
-    ("password", "16", "characters", "hygiene", "classification", "lockout"),
-    ("soc", "incident", "phishing", "soc-alerts", "4911", "triage"),
-    ("supplier", "apex", "meridian", "vanguard", "sla", "99.95", "99.99", "sup-101", "sup-102"),
-    ("vpc", "peering", "cidr", "10.42.0.0/16", "vpc-prod-compute", "tgw", "transit"),
-    ("nat", "egress", "bgp", "64512", "bfd", "failover", "10.42.16.0/20"),
-    ("salary", "compensation", "l3", "l4", "l5", "l6", "m3", "staff", "185000", "210000", "240000"),
-    ("budget", "q3", "fin-q3-001", "fin-q3-002", "snowflake", "450000", "480000", "-30000", "variance"),
-    ("roadmap", "capex", "14.5m", "14,500,000", "ebitda", "7.2m", "7,200,000", "340", "fy2026"),
-    ("titan", "valuation", "184,500,000", "184.5m", "buyout", "92,000,000", "retention", "25,000,000"),
-    ("escrow", "indemnity", "18,450,000", "morgan", "covenant", "22,000,000", "arr", "non-compete"),
-    ("aegis-x", "royalty", "3,500,000", "4.5%", "900,000", "11,402,891", "quantum", "license"),
-)
-
-
-class FakeEmbedding(EmbeddingFunction[Documents]):
-    """
-    Deterministic 32-dim unit-vector embedding function for fast, offline unit tests.
-    Combines keyword topic activation (first 12 dims) with a low-amplitude SHA-256 hash
-    signature (remaining 20 dims) so both exact-match and domain-query tests behave
-    predictably.
-    """
-
-    def __init__(self) -> None:
-        pass
-
-    @staticmethod
-    def name() -> str:
-        return "fake_embedding"
-
-    def get_config(self) -> dict:
-        return {}
-
-    @staticmethod
-    def build_from_config(config: dict) -> "FakeEmbedding":
-        return FakeEmbedding()
-
-    def __call__(self, input: Documents) -> Embeddings:
-        results: Embeddings = []
-        for text in input:
-            lowered = text.lower()
-            tokens = set(re.findall(r"[a-z0-9_.\-$%]+", lowered))
-            vec: List[float] = []
-
-            matched_any_bucket = False
-            for bucket in TOPIC_BUCKETS:
-                hits = sum(1 for kw in bucket if kw in lowered or kw in tokens)
-                if hits > 0:
-                    matched_any_bucket = True
-                vec.append(float(hits) * 3.0)
-
-            digest = hashlib.sha256(text.encode("utf-8")).digest()
-            hash_scale = 0.15 if matched_any_bucket else 1.0
-            for i in range(20):
-                val = ((digest[i] / 255.0) * 2.0 - 1.0) * hash_scale
-                vec.append(val)
-
-            norm = math.sqrt(sum(x * x for x in vec)) or 1.0
-            results.append([x / norm for x in vec])
-        return results
+FakeEmbedding = DeterministicHashEmbedding
 
 
 @pytest.fixture
@@ -148,4 +83,3 @@ def make_pdf() -> Callable[[Path, List[str]], Path]:
         return path
 
     return _create
-

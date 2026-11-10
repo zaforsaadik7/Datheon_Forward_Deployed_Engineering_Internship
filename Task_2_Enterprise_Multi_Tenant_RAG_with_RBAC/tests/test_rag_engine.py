@@ -118,7 +118,7 @@ def test_post_retrieval_rbac_violation_is_caught_logged_and_uniformly_abstained(
     assert audit.events[-1].rbac_violation_blocked is True
 
 
-def test_dishonest_generator_is_rejected_by_guardrail_and_abstains(populated_engine):
+def test_dishonest_generator_is_rejected_by_guardrail_and_abstains_uniformly(populated_engine):
     class DishonestGenerator:
         def generate(self, query: str, ranked_chunks: Sequence[RankedChunk]) -> DraftAnswer:
             return DraftAnswer(
@@ -136,8 +136,10 @@ def test_dishonest_generator_is_rejected_by_guardrail_and_abstains(populated_eng
         principal=PERSONAS["ops_associate"],
     )
     assert resp.abstained is True
-    assert resp.abstention_reason == "guardrail_rejected"
-    assert resp.guardrails.passed is False
-    assert any("99" in n for n in resp.guardrails.hallucinated_numbers)
+    assert resp.answer == UNIFORM_ABSTENTION_MESSAGE
+    assert resp.abstention_reason == "no_authorized_results"
+    assert resp.guardrails.passed is True
+    assert resp.guardrails.checked_sentences == 0
     assert resp.citations == ()
+    assert populated_engine.audit_logger.events[-1].authorized_candidates > 0
 

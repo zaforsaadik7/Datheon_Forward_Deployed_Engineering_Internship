@@ -4,7 +4,6 @@ import hashlib
 import json
 import math
 from pathlib import Path
-import re
 from typing import List, Optional, Sequence
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from rich.console import Console
@@ -15,29 +14,20 @@ from ..etl.pipeline import ingest_directory
 from ..etl.vector_store import VectorStore
 from .engine import MultiTenantRAGEngine
 from .eval import run_rbac_evaluation
-from .rbac import API_KEY_REGISTRY, PERSONAS
-from .reranker import LexicalReranker, OnnxCrossEncoder, Reranker
+from .rbac import PERSONAS, load_api_key_registry
+from .reranker import LexicalReranker, OnnxCrossEncoder, Reranker, _tokenize
 
 console = Console()
 
-CLI_TOPIC_BUCKETS: tuple[tuple[str, ...], ...] = (
-    ("fido2", "mfa", "bitlocker", "filevault", "crowdstrike", "mdm", "workstations"),
-    ("password", "16", "characters", "hygiene", "classification", "lockout"),
-    ("soc", "incident", "phishing", "soc-alerts", "4911", "triage"),
-    ("supplier", "apex", "meridian", "vanguard", "sla", "99.95", "99.99", "sup-101", "sup-102"),
-    ("vpc", "peering", "cidr", "10.42.0.0/16", "vpc-prod-compute", "tgw", "transit"),
-    ("nat", "egress", "bgp", "64512", "bfd", "failover", "10.42.16.0/20"),
-    ("salary", "compensation", "l3", "l4", "l5", "l6", "m3", "staff", "185000", "210000", "240000"),
-    ("budget", "q3", "fin-q3-001", "fin-q3-002", "snowflake", "450000", "480000", "-30000", "variance"),
-    ("roadmap", "capex", "14.5m", "14,500,000", "ebitda", "7.2m", "7,200,000", "340", "fy2026"),
-    ("titan", "valuation", "184,500,000", "184.5m", "buyout", "92,000,000", "retention", "25,000,000"),
-    ("escrow", "indemnity", "18,450,000", "morgan", "covenant", "22,000,000", "arr", "non-compete"),
-    ("aegis-x", "royalty", "3,500,000", "4.5%", "900,000", "11,402,891", "quantum", "license"),
-)
-
 
 class DeterministicHashEmbedding(EmbeddingFunction[Documents]):
-    """Lightweight deterministic 32-dim embedding function for offline/fast CLI testing."""
+    """
+    Domain-agnostic 256-dim signed feature-hashing embedding function (Weinberger et al.)
+    for offline unit testing. Uses general token and character 4-gram SHA-256 projections
+    with zero corpus-specific or query-specific vocabulary lists.
+    """
+
+    DIM = 256
 
     def __init__(self) -> None:
         pass
@@ -56,19 +46,25 @@ class DeterministicHashEmbedding(EmbeddingFunction[Documents]):
     def __call__(self, input: Documents) -> Embeddings:
         results: Embeddings = []
         for text in input:
-            lowered = text.lower()
-            tokens = set(re.findall(r"[a-z0-9_.\-$%]+", lowered))
-            vec: List[float] = []
-            matched = False
-            for bucket in CLI_TOPIC_BUCKETS:
-                hits = sum(1 for kw in bucket if kw in lowered or kw in tokens)
-                if hits > 0:
-                    matched = True
-                vec.append(float(hits) * 3.0)
-            digest = hashlib.sha256(text.encode("utf-8")).digest()
-            scale = 0.15 if matched else 1.0
-            for i in range(20):
-                vec.append(((digest[i] / 255.0) * 2.0 - 1.0) * scale)
+            vec = [0.0] * self.DIM
+            tokens = _tokenize(text)
+            features: List[tuple[str, float]] = []
+            for tok in tokens:
+                features.append((f"w:{tok}", 1.0))
+                if len(tok) >= 4:
+                    for i in range(len(tok) - 3):
+                        features.append((f"g:{tok[i:i+4]}", 0.35))
+
+            if not features:
+                features.append((f"raw:{text.strip().lower()}", 1.0))
+
+            for feat, weight in features:
+                digest = hashlib.sha256(feat.encode("utf-8")).digest()
+                for slot in range(0, 8, 2):
+                    idx = digest[slot] % self.DIM
+                    sign = 1.0 if (digest[slot + 1] & 1) == 0 else -1.0
+                    vec[idx] += sign * weight
+
             norm = math.sqrt(sum(x * x for x in vec)) or 1.0
             results.append([x / norm for x in vec])
         return results
@@ -89,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     # 1. personas
-    sub.add_parser("personas", help="Display the 6 RBAC personas and their API keys")
+    sub.add_parser("personas", help="Display the 6 RBAC personas and their configured API keys")
 
     # 2. ingest
     p_ing = sub.add_parser("ingest", help="Ingest enterprise corpus into ChromaDB")
@@ -109,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ask.add_argument("--use-fake-embeddings", action="store_true")
 
     # 4. eval
-    p_eval = sub.add_parser("eval", help="Run the 18-case RBAC & accuracy evaluation suite")
+    p_eval = sub.add_parser("eval", help="Run the 19-case RBAC & accuracy evaluation suite")
     p_eval.add_argument("--data-dir", type=Path, default=s.data_dir)
     p_eval.add_argument("--chroma-path", type=Path, default=s.chroma_path)
     p_eval.add_argument("--collection", type=str, default=s.collection_name)
@@ -130,7 +126,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "personas":
-        key_by_user = {p.user_id: k for k, p in API_KEY_REGISTRY.items()}
+        registry = load_api_key_registry()
+        key_by_user = {p.user_id: k for k, p in registry.items()}
         table = Table(title="Enterprise Multi-Tenant RBAC Personas")
         table.add_column("Persona ID", style="cyan")
         table.add_column("API Key", style="yellow")
@@ -233,4 +230,3 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

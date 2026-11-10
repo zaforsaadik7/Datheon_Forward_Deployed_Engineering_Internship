@@ -9,7 +9,7 @@ from .query_rewriter import rewrite_query
 from .rbac import (
     AuditLogger,
     RBACViolationError,
-     assert_hits_authorized,
+    assert_hits_authorized,
     authorize_principal,
 )
 from .reranker import LexicalReranker, Reranker
@@ -32,7 +32,7 @@ class MultiTenantRAGEngine:
     4. Defense-in-depth post-retrieval assertion (assert_hits_authorized)
     5. Candidate-scoped cross-encoder reranking over over-fetched candidates
     6. Marker-based synthesis and numeric/entity hallucination guardrails
-    7. Uniform existence-leak-free abstention and structured audit logging
+    7. Strictly uniform existence-leak-free abstention and structured audit logging
     """
 
     def __init__(
@@ -44,7 +44,6 @@ class MultiTenantRAGEngine:
         overfetch_k: int = 24,
         top_k: int = 5,
         min_rerank_score: float = 0.25,
-        _unsafe_disable_rbac: bool = False,
     ) -> None:
         self.store = store
         self.reranker: Reranker = reranker if reranker is not None else LexicalReranker()
@@ -53,7 +52,6 @@ class MultiTenantRAGEngine:
         self.overfetch_k = overfetch_k
         self.top_k = top_k
         self.min_rerank_score = min_rerank_score
-        self._unsafe_disable_rbac = _unsafe_disable_rbac
 
     def _abstain_response(
         self,
@@ -62,8 +60,7 @@ class MultiTenantRAGEngine:
         raw_query: str,
         rewritten_query: str,
         sub_queries: tuple[str, ...],
-        reason: str,
-        guardrails: GuardrailReport,
+        authorized_candidates: int,
         rewrite_ms: float,
         retrieve_ms: float,
         rerank_ms: float,
@@ -82,11 +79,16 @@ class MultiTenantRAGEngine:
             guardrail_ms=round(guardrail_ms, 3),
             total_ms=round(total_ms, 3),
         )
+        uniform_guardrails = GuardrailReport(
+            passed=True,
+            checked_sentences=0,
+            verified_sentences=0,
+        )
         self.audit_logger.record(
             principal=principal,
             query=raw_query,
             rewritten_query=rewritten_query,
-            authorized_candidates=0,
+            authorized_candidates=authorized_candidates,
             cited_sources=(),
             abstained=True,
             injection_detected=injection_detected,
@@ -96,11 +98,11 @@ class MultiTenantRAGEngine:
         return RAGResponse(
             answer=UNIFORM_ABSTENTION_MESSAGE,
             abstained=True,
-            abstention_reason=reason,  # type: ignore[arg-type]
+            abstention_reason="no_authorized_results",
             rewritten_query=rewritten_query,
             sub_queries=sub_queries,
             citations=(),
-            guardrails=guardrails,
+            guardrails=uniform_guardrails,
             timings=timings,
             authorized_PostFilter_count=0,
         )
@@ -120,42 +122,24 @@ class MultiTenantRAGEngine:
         rw = rewrite_query(query)
         rewrite_ms = (time.perf_counter() - t0) * 1000.0
 
-        empty_guardrails = GuardrailReport(
-            passed=True,
-            checked_sentences=0,
-            verified_sentences=0,
-        )
-
         # Stage 2: Pre-filtered multi-tenant vector retrieval + post-retrieval RBAC barrier
         t1 = time.perf_counter()
         dedup_hits: Dict[str, QueryHit] = {}
         for sub_q in rw.sub_queries:
-            if self._unsafe_disable_rbac:
-                hits = self.store.query_by_tier_and_department(
-                    query_text=sub_q,
-                    user_tier=4,
-                    user_departments=None,
-                    tenant_id=principal.tenant_id,
-                    top_k=self.overfetch_k,
-                )
-            else:
-                hits = self.store.query_by_tier_and_department(
-                    query_text=sub_q,
-                    user_tier=principal.clearance_tier,
-                    user_departments=sorted(principal.departments),
-                    tenant_id=principal.tenant_id,
-                    top_k=self.overfetch_k,
-                )
+            hits = self.store.query_by_tier_and_department(
+                query_text=sub_q,
+                user_tier=principal.clearance_tier,
+                user_departments=sorted(principal.departments),
+                tenant_id=principal.tenant_id,
+                top_k=self.overfetch_k,
+            )
             for h in hits:
                 if h.chunk_id not in dedup_hits or h.distance < dedup_hits[h.chunk_id].distance:
                     dedup_hits[h.chunk_id] = h
 
         raw_candidates: List[QueryHit] = list(dedup_hits.values())
         try:
-            if self._unsafe_disable_rbac:
-                verified_hits = raw_candidates
-            else:
-                verified_hits = assert_hits_authorized(raw_candidates, principal)
+            verified_hits = assert_hits_authorized(raw_candidates, principal)
         except RBACViolationError as exc:
             retrieve_ms = (time.perf_counter() - t1) * 1000.0
             logger.error("Security barrier blocked unauthorized retrieval: %s", exc)
@@ -164,8 +148,7 @@ class MultiTenantRAGEngine:
                 raw_query=query,
                 rewritten_query=rw.rewritten_query,
                 sub_queries=rw.sub_queries,
-                reason="no_authorized_results",
-                guardrails=empty_guardrails,
+                authorized_candidates=0,
                 rewrite_ms=rewrite_ms,
                 retrieve_ms=retrieve_ms,
                 rerank_ms=0.0,
@@ -177,6 +160,7 @@ class MultiTenantRAGEngine:
             )
 
         retrieve_ms = (time.perf_counter() - t1) * 1000.0
+        authorized_candidate_count = len(verified_hits)
 
         if not verified_hits:
             return self._abstain_response(
@@ -184,8 +168,7 @@ class MultiTenantRAGEngine:
                 raw_query=query,
                 rewritten_query=rw.rewritten_query,
                 sub_queries=rw.sub_queries,
-                reason="no_authorized_results",
-                guardrails=empty_guardrails,
+                authorized_candidates=0,
                 rewrite_ms=rewrite_ms,
                 retrieve_ms=retrieve_ms,
                 rerank_ms=0.0,
@@ -211,8 +194,7 @@ class MultiTenantRAGEngine:
                 raw_query=query,
                 rewritten_query=rw.rewritten_query,
                 sub_queries=rw.sub_queries,
-                reason="no_authorized_results",
-                guardrails=empty_guardrails,
+                authorized_candidates=authorized_candidate_count,
                 rewrite_ms=rewrite_ms,
                 retrieve_ms=retrieve_ms,
                 rerank_ms=rerank_ms,
@@ -233,8 +215,7 @@ class MultiTenantRAGEngine:
                 raw_query=query,
                 rewritten_query=rw.rewritten_query,
                 sub_queries=rw.sub_queries,
-                reason="no_authorized_results",
-                guardrails=empty_guardrails,
+                authorized_candidates=authorized_candidate_count,
                 rewrite_ms=rewrite_ms,
                 retrieve_ms=retrieve_ms,
                 rerank_ms=rerank_ms,
@@ -250,13 +231,19 @@ class MultiTenantRAGEngine:
         guardrail_ms = (time.perf_counter() - t4) * 1000.0
 
         if not guardrail_report.passed:
+            logger.warning(
+                "Guardrail rejected draft answer for principal '%s': numbers=%s, entities=%s, markers=%s",
+                principal.user_id,
+                guardrail_report.hallucinated_numbers,
+                guardrail_report.hallucinated_entities,
+                guardrail_report.invalid_marker_indices,
+            )
             return self._abstain_response(
                 principal=principal,
                 raw_query=query,
                 rewritten_query=rw.rewritten_query,
                 sub_queries=rw.sub_queries,
-                reason="guardrail_rejected",
-                guardrails=guardrail_report,
+                authorized_candidates=authorized_candidate_count,
                 rewrite_ms=rewrite_ms,
                 retrieve_ms=retrieve_ms,
                 rerank_ms=rerank_ms,
@@ -281,7 +268,7 @@ class MultiTenantRAGEngine:
             principal=principal,
             query=query,
             rewritten_query=rw.rewritten_query,
-            authorized_candidates=len(ranked_chunks),
+            authorized_candidates=authorized_candidate_count,
             cited_sources=tuple(c.format_tag() for c in citations),
             abstained=False,
             injection_detected=rw.injection_detected,
@@ -300,4 +287,3 @@ class MultiTenantRAGEngine:
             timings=timings,
             authorized_PostFilter_count=len(ranked_chunks),
         )
-

@@ -69,18 +69,36 @@ def create_app(
         }
 
     @app.get("/api/v1/rag/personas")
-    def list_personas() -> Dict[str, List[Dict[str, Any]]]:
+    def list_personas(
+        x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+        authorization: Optional[str] = Header(default=None, alias="Authorization"),
+        x_dev_persona: Optional[str] = Header(default=None, alias="X-Dev-Persona"),
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        token = x_api_key if x_api_key is not None else authorization
+        try:
+            principal = authenticate_api_key(
+                api_key=token,
+                dev_persona=x_dev_persona,
+                allow_dev_header=dev_header_enabled,
+            )
+            authorize_principal(principal)
+        except AuthenticationError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AccessDeniedError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
         items: List[Dict[str, Any]] = []
         for pid, p in PERSONAS.items():
-            items.append(
-                {
-                    "user_id": pid,
-                    "role_title": p.role_title,
-                    "tenant_id": p.tenant_id,
-                    "clearance_tier": p.clearance_tier,
-                    "departments": sorted(p.departments),
-                }
-            )
+            if p.tenant_id == principal.tenant_id:
+                items.append(
+                    {
+                        "user_id": pid,
+                        "role_title": p.role_title,
+                        "tenant_id": p.tenant_id,
+                        "clearance_tier": p.clearance_tier,
+                        "departments": sorted(p.departments),
+                    }
+                )
         return {"personas": items}
 
     @app.post("/api/v1/rag/query", response_model=RAGResponse)
@@ -112,4 +130,3 @@ def create_app(
         )
 
     return app
-
