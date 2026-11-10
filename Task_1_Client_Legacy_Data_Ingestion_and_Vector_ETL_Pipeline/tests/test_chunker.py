@@ -149,3 +149,23 @@ def test_segments_are_never_merged():
     assert len(chunks) == 2
     assert chunks[0].row_id == 2
     assert chunks[1].row_id == 3
+
+
+def test_hard_cut_keeps_final_characters():
+    # Last window is exactly the packing budget (780) with no separators:
+    # the old join added a space, hit 901 characters and cut off the last one.
+    text = "A" * (780 * 7 - 8) + "ENDMARK1"
+    chunks = chunk_text(text, chunk_size=900, overlap=120)
+    assert chunks[-1].endswith("ENDMARK1")
+    assert all(len(c) <= 900 for c in chunks)
+
+
+def test_hard_cut_does_not_inject_spaces():
+    chunks = chunk_text("x" * 5000, chunk_size=900, overlap=120)
+    assert all(" " not in c for c in chunks)
+
+
+def test_no_content_lost_across_chunks():
+    text = "".join(f"[{i:04d}]" for i in range(1200))  # 7,200 chars, no separators
+    joined = "".join(chunk_text(text, chunk_size=900, overlap=120))
+    assert all(f"[{i:04d}]" in joined for i in range(1200))

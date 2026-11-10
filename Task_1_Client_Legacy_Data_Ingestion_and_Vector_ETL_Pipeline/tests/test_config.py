@@ -23,3 +23,4 @@ def test_settings_defaults():
         "operations",
     })
     assert "metadata" in COSINE_COLLECTION_KWARGS or "configuration" in COSINE_COLLECTION_KWARGS
+

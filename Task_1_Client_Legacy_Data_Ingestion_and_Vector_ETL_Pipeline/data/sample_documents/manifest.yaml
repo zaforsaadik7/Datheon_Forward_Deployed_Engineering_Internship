@@ -1,0 +1,35 @@
+# Source of truth for access-control metadata. Anything not listed here falls back to
+# the "<department>_*_tierN.ext" filename convention, and unresolved tiers fail closed to 4.
+documents:
+  - file: security_compliance_tier1.pdf
+    department: operations
+    clearance_tier: 1
+    document_date: 2026-01-15
+  - file: merger_acquisition_audit_tier4.pdf
+    department: legal
+    clearance_tier: 4
+    document_date: 2026-09-20
+  - file: finance_q3_budget_audit_tier3.csv
+    department: finance
+    clearance_tier: 3
+    document_date: 2026-10-18
+  - file: hr_compensation_bands_tier2.csv
+    department: hr
+    clearance_tier: 2
+    document_date: 2026-10-01   # the file carries no date; adjust if you know the real one
+  - file: engineering_cloud_vpc_runbook_tier2.md
+    department: engineering
+    clearance_tier: 2
+    document_date: 2026-08-10
+  - file: executive_ai_roadmap_tier3.md
+    department: executive
+    clearance_tier: 3
+    document_date: 2026-10-25
+  - file: legal_ip_license_agreement_tier4.txt
+    department: legal
+    clearance_tier: 4
+    document_date: 2026-07-04
+  - file: operations_supplier_catalog_tier1.json
+    department: operations
+    clearance_tier: 1
+    document_date: 2026-03-01

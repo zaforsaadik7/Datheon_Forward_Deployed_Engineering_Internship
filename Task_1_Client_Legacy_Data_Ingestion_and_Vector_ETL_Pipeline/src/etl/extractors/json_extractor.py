@@ -82,3 +82,4 @@ class JsonExtractor(BaseExtractor):
             raise ExtractionError(f"File '{path.name}' contains no extractable text.")
 
         return segments
+

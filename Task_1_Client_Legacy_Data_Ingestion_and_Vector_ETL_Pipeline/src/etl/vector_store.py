@@ -104,7 +104,7 @@ class VectorStore:
         Remove all chunks associated with a document_id.
         Returns the number of chunks removed.
         """
-        existing = self.collection.get(where={"document_id": document_id})
+        existing = self.collection.get(where={"document_id": document_id}, include=[])
         ids_to_delete = existing.get("ids", [])
         if ids_to_delete:
             self.collection.delete(ids=ids_to_delete)

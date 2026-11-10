@@ -65,3 +65,16 @@ documents:
         load_manifest(manifest_file)
 
     assert "bad_tier_file.txt" in str(exc_info.value)
+
+
+
+def test_manifest_does_not_match_by_basename():
+    manifest = {
+        "a.txt": ManifestEntry(
+            department="hr", clearance_tier=1, document_date="2026-01-01", metadata_source="manifest"
+        )
+    }
+    # a.txt in another folder must not inherit the tier-1 entry for the top-level a.txt
+    with pytest.raises(MetadataError):
+        resolve_metadata("legal/secret/a.txt", manifest, mtime=1760000000.0)
+    assert resolve_metadata("a.txt", manifest, mtime=1760000000.0).clearance_tier == 1

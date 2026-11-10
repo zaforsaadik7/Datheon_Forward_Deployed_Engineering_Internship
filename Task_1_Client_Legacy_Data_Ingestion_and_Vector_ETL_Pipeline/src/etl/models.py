@@ -1,6 +1,6 @@
 """Pydantic data models for vector ETL segments, chunks, and metadata."""
 from datetime import date
-from typing import Optional, Dict, Union, Literal
+from typing import Optional, Dict, Union, Literal, List
 from pydantic import BaseModel, Field, field_validator
 from ..config import DEPARTMENTS, TIERS
 
@@ -104,3 +104,23 @@ def to_chroma_metadata(chunk: DocumentChunk) -> Dict[str, Union[str, int, float,
                 chroma_meta[k] = str(v)
 
     return chroma_meta
+
+
+class FailedDocument(BaseModel):
+    """Record of a document that failed at a specific ingestion stage."""
+    file: str
+    stage: Literal["discover", "metadata", "extract", "index"]
+    error: str
+
+
+class IngestReport(BaseModel):
+    """Comprehensive performance and outcome report for directory ingestion."""
+    documents_ok: int
+    documents_failed: List[FailedDocument]
+    chunks_written: int
+    bytes_read: int
+    extract_s: float
+    chunk_s: float
+    embed_s: float
+    write_s: float
+    total_s: float

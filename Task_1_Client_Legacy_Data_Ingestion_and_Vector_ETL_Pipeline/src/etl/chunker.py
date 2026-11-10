@@ -95,10 +95,10 @@ def chunk_text(text: str, chunk_size: int = 900, overlap: int = 120) -> List[str
             else:
                 overlap_prefix = overlap_text
 
-            combined = (overlap_prefix + " " + window).strip()
-            # Safety clamp: if combined exceeds chunk_size, truncate to chunk_size
-            if len(combined) > chunk_size:
-                combined = combined[:chunk_size]
+            # Windows end on a separator (or mid-token after a hard cut), so the
+            # prefix joins directly. Prefix <= overlap and window <= budget, hence
+            # combined <= chunk_size without ever truncating content.
+            combined = (overlap_prefix + window).strip()
             chunks.append(combined)
 
     return chunks

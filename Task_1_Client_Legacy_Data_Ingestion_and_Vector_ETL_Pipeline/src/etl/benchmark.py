@@ -1,140 +1,236 @@
-"""Batch Ingestion and Query Latency Benchmarking Suite."""
-import time
+"""Batch ingestion and filtered-query benchmark harness."""
+import hashlib
 import json
+import math
+import platform
+import threading
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List
-import numpy as np
+from typing import Any, Dict, List, Literal, Optional, Sequence
+
+import chromadb
+import psutil
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from rich.console import Console
 from rich.table import Table
 
-from .models import BenchmarkResult
-from .pipeline import VectorETLPipeline
-from .vector_store import VectorStoreManager
-from ..config import settings
-
-console = Console()
+from .pipeline import ingest_directory
+from .synthetic import VOCAB, make_synthetic_corpus
+from .vector_store import VectorStore
 
 
-class ETLBenchmarkRunner:
-    """
-    Executes rigorous performance profiling across all stages of the vector ETL pipeline:
-    - Extraction latency by format
-    - Semantic chunking throughput
-    - Vector database cosine index write speed
-    - End-to-end query latency with RBAC metadata filtering (P50, P95, P99)
-    """
+def percentile(values: Sequence[float], p: float) -> float:
+    """Percentile by linear interpolation between closest ranks (numpy's default)."""
+    if not values:
+        raise ValueError("percentile() requires at least one value")
+    ordered = sorted(values)
+    k = (len(ordered) - 1) * p / 100.0
+    lo, hi = math.floor(k), math.ceil(k)
+    if lo == hi:
+        return float(ordered[int(k)])
+    return float(ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo))
 
-    def __init__(self, data_dir: Path, collection_name: str = "benchmark_collection"):
-        self.data_dir = Path(data_dir)
-        self.collection_name = collection_name
-        self.vector_store = VectorStoreManager()
-        self.pipeline = VectorETLPipeline(vector_store=self.vector_store)
 
-    def run_benchmark(self, query_iterations: int = 30) -> BenchmarkResult:
-        """Run full profiling suite and return BenchmarkResult."""
-        console.print("[bold cyan]🚀 Starting Datheon Vector ETL Pipeline Benchmark...[/bold cyan]")
+class HashEmbedding(EmbeddingFunction[Documents]):
+    """Deterministic 64-dim embedder so benchmarks and CLI tests run without a model download."""
 
-        # 1. Measure Document Extraction
-        t0 = time.perf_counter()
-        raw_docs = []
-        files = list(self.data_dir.glob("*.*"))
-        for f in files:
-            ext = f.suffix.lower()
-            if ext in self.pipeline.EXTRACTOR_REGISTRY:
-                extractor = self.pipeline.EXTRACTOR_REGISTRY[ext]()
-                raw_docs.extend(extractor.extract(f))
-        extraction_time_ms = (time.perf_counter() - t0) * 1000
+    def __init__(self) -> None:
+        pass
 
-        # 2. Measure Semantic Chunking
-        t1 = time.perf_counter()
-        chunks = self.pipeline.chunker.chunk_documents(raw_docs)
-        chunking_time_ms = (time.perf_counter() - t1) * 1000
+    @staticmethod
+    def name() -> str:
+        return "hash-embedding-64"
 
-        total_tokens = sum(c.token_count for c in chunks)
+    def get_config(self) -> Dict[str, Any]:
+        return {}
 
-        # 3. Measure Vector Store Indexing
-        self.vector_store.reset_collection(self.collection_name)
-        t2 = time.perf_counter()
-        self.vector_store.upsert_chunks(chunks, collection_name=self.collection_name)
-        indexing_time_ms = (time.perf_counter() - t2) * 1000
+    @staticmethod
+    def build_from_config(config: Dict[str, Any]) -> "HashEmbedding":
+        return HashEmbedding()
 
-        total_time_ms = extraction_time_ms + chunking_time_ms + indexing_time_ms
-        total_time_sec = total_time_ms / 1000.0
+    def __call__(self, input: Documents) -> Embeddings:
+        out: Embeddings = []
+        for text in input:
+            digest = hashlib.sha256(text.encode("utf-8")).digest() * 2  # 64 bytes
+            raw = [b - 127.5 for b in digest]
+            norm = math.sqrt(sum(x * x for x in raw)) or 1.0
+            out.append([x / norm for x in raw])
+        return out
 
-        throughput_docs = len(raw_docs) / total_time_sec if total_time_sec > 0 else 0
-        throughput_chunks = len(chunks) / total_time_sec if total_time_sec > 0 else 0
 
-        # 4. Measure Query Latency with Metadata Filters
-        sample_queries = [
-            ("What is the acceptable use policy for enterprise devices?", 1, ["IT/Security"]),
-            ("What are the VPC peering CIDR blocks?", 2, ["Engineering"]),
-            ("What was the approved Q3 budget for GPU compute?", 3, ["Finance"]),
-            ("What are the cap table terms for Project Titan?", 4, ["Legal", "Executive"]),
-            ("What are the salary bands for senior forward deployed engineers?", 2, ["HR"]),
-        ]
+class PeakRssSampler:
+    """Context manager that polls this process's RSS every 20 ms and records the peak."""
 
-        query_latencies = []
-        for q_idx in range(query_iterations):
-            q_text, tier, depts = sample_queries[q_idx % len(sample_queries)]
-            t_start = time.perf_counter()
-            self.vector_store.query_with_rbac(
-                query_text=q_text,
-                user_tier=tier,
-                user_departments=depts,
-                top_k=3,
-                collection_name=self.collection_name,
-            )
-            lat_ms = (time.perf_counter() - t_start) * 1000
-            query_latencies.append(lat_ms)
+    def __init__(self, interval_s: float = 0.02):
+        self._interval = interval_s
+        self._proc = psutil.Process()
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._peak = 0
 
-        lat_arr = np.array(query_latencies)
-        query_stats = {
-            "mean": round(float(np.mean(lat_arr)), 2),
-            "p50": round(float(np.percentile(lat_arr, 50)), 2),
-            "p95": round(float(np.percentile(lat_arr, 95)), 2),
-            "p99": round(float(np.percentile(lat_arr, 99)), 2),
-        }
+    @property
+    def peak_mb(self) -> float:
+        return self._peak / (1024 * 1024)
 
-        result = BenchmarkResult(
-            num_documents=len(raw_docs),
-            num_chunks=len(chunks),
-            total_tokens=total_tokens,
-            extraction_time_ms=round(extraction_time_ms, 2),
-            chunking_time_ms=round(chunking_time_ms, 2),
-            indexing_time_ms=round(indexing_time_ms, 2),
-            total_time_ms=round(total_time_ms, 2),
-            throughput_docs_per_sec=round(throughput_docs, 2),
-            throughput_chunks_per_sec=round(throughput_chunks, 2),
-            query_latency_ms=query_stats,
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self._peak = max(self._peak, self._proc.memory_info().rss)
+            time.sleep(self._interval)
+
+    def __enter__(self) -> "PeakRssSampler":
+        self._peak = self._proc.memory_info().rss
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join()
+        self._peak = max(self._peak, self._proc.memory_info().rss)
+
+
+SCENARIOS = [
+    {"name": "no_filter", "user_tier": 4, "departments": None},
+    {"name": "tier_only", "user_tier": 2, "departments": None},
+    {"name": "tier_one_dept", "user_tier": 2, "departments": ["engineering"]},
+    {"name": "tier_three_depts", "user_tier": 3, "departments": ["engineering", "finance", "hr"]},
+]
+
+
+def _query_phrases() -> List[str]:
+    phrases: List[str] = []
+    for dept in sorted(VOCAB):
+        words = VOCAB[dept]
+        for i in range(0, 4):
+            phrases.append(" ".join(words[i * 3:(i * 3) + 3]))
+    return phrases[:20] if len(phrases) >= 20 else phrases
+
+
+def _make_store(path: Path, embedder: str) -> VectorStore:
+    fn = HashEmbedding() if embedder == "fake" else None
+    return VectorStore(path, embedding_function=fn)
+
+
+def _measure_queries(store: VectorStore, scale: int, n: int) -> List[Dict[str, Any]]:
+    phrases = _query_phrases()
+    rows: List[Dict[str, Any]] = []
+    for scenario in SCENARIOS:
+        tier, depts = scenario["user_tier"], scenario["departments"]
+        allowed = {d.lower() for d in depts} if depts else None
+        for i in range(10):  # warm-up, not recorded
+            store.query_by_tier_and_department(phrases[i % len(phrases)], tier, depts, top_k=5)
+        latencies: List[float] = []
+        violations = 0
+        for i in range(n):
+            t0 = time.perf_counter()
+            hits = store.query_by_tier_and_department(phrases[i % len(phrases)], tier, depts, top_k=5)
+            latencies.append((time.perf_counter() - t0) * 1000.0)
+            for h in hits:
+                if h.metadata["clearance_tier"] > tier:
+                    violations += 1
+                elif allowed is not None and h.metadata["department"] not in allowed:
+                    violations += 1
+        rows.append({
+            "scale_docs": scale,
+            "scenario": scenario["name"],
+            "n": n,
+            "p50_ms": percentile(latencies, 50),
+            "p95_ms": percentile(latencies, 95),
+            "p99_ms": percentile(latencies, 99),
+            "filter_violations": violations,
+        })
+    return rows
+
+
+def run_benchmark(
+    work_dir: Path,
+    scales: Sequence[int] = (50, 200, 1000),
+    batch_sizes: Sequence[int] = (32, 128, 512),
+    queries_per_scenario: int = 200,
+    embedder: Literal["default", "fake"] = "default",
+    seed: int = 42,
+) -> Dict[str, Any]:
+    """Ingest synthetic corpora at several scales and batch sizes, then time filtered queries."""
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    report: Dict[str, Any] = {
+        "meta": {
+            "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "python": platform.python_version(),
+            "chromadb": chromadb.__version__,
+            "embedder": embedder,
+            "seed": seed,
+            "chunk_size": 900,
+            "overlap": 120,
+        },
+        "ingestion": [],
+        "queries": [],
+    }
+
+    for scale in scales:
+        corpus = work_dir / f"corpus_{scale}"
+        make_synthetic_corpus(corpus, scale, seed=seed)
+        query_store: Optional[VectorStore] = None
+
+        for bs in batch_sizes:
+            store = _make_store(work_dir / f"db_{scale}_{bs}", embedder)
+            store.reset()
+            with PeakRssSampler() as rss:
+                result = ingest_directory(corpus, store, batch_size=bs)
+            total = max(result.total_s, 1e-9)
+            report["ingestion"].append({
+                "scale_docs": scale,
+                "batch_size": bs,
+                "documents": result.documents_ok,
+                "chunks": result.chunks_written,
+                "bytes": result.bytes_read,
+                "extract_s": result.extract_s,
+                "chunk_s": result.chunk_s,
+                "embed_s": result.embed_s,
+                "write_s": result.write_s,
+                "total_s": result.total_s,
+                "docs_per_s": result.documents_ok / total,
+                "chunks_per_s": result.chunks_written / total,
+                "mb_per_s": (result.bytes_read / (1024 * 1024)) / total,
+                "rss_peak_mb": rss.peak_mb,
+                "failed_documents": len(result.documents_failed),
+            })
+            if query_store is None:
+                query_store = store
+
+        assert query_store is not None
+        report["queries"].extend(_measure_queries(query_store, scale, queries_per_scenario))
+
+    return report
+
+
+def write_report(report: Dict[str, Any], path: Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+
+def render_report(report: Dict[str, Any], console: Optional[Console] = None) -> None:
+    console = console or Console()
+    ing = Table(title="Ingestion")
+    for col in ("docs", "batch", "chunks", "extract s", "chunk s", "embed s", "write s", "chunks/s", "MB/s", "peak RSS MB"):
+        ing.add_column(col, justify="right")
+    for r in report["ingestion"]:
+        ing.add_row(
+            str(r["scale_docs"]), str(r["batch_size"]), str(r["chunks"]),
+            f"{r['extract_s']:.2f}", f"{r['chunk_s']:.2f}", f"{r['embed_s']:.2f}", f"{r['write_s']:.2f}",
+            f"{r['chunks_per_s']:.1f}", f"{r['mb_per_s']:.2f}", f"{r['rss_peak_mb']:.0f}",
         )
+    console.print(ing)
 
-        self._display_results(result)
-        return result
-
-    def _display_results(self, result: BenchmarkResult):
-        """Render results in a clean rich terminal table."""
-        table = Table(title="📊 Vector ETL Ingestion & Latency Benchmark Results", style="bold green")
-        table.add_column("Metric / Phase", style="cyan", no_wrap=True)
-        table.add_column("Observed Value", style="bold yellow")
-        table.add_column("Target SLA", style="magenta")
-
-        table.add_row("Raw Extracted Documents", str(result.num_documents), "-")
-        table.add_row("Total Semantic Chunks", str(result.num_chunks), "-")
-        table.add_row("Indexed Token Count", f"{result.total_tokens:,}", "-")
-        table.add_row("Extraction Phase Latency", f"{result.extraction_time_ms} ms", "< 500 ms")
-        table.add_row("Semantic Chunking Latency", f"{result.chunking_time_ms} ms", "< 200 ms")
-        table.add_row("Vector Upsert Latency", f"{result.indexing_time_ms} ms", "< 1000 ms")
-        table.add_row("Total Pipeline Runtime", f"{result.total_time_ms} ms", "< 2000 ms")
-        table.add_row("Throughput (Chunks/sec)", f"{result.throughput_chunks_per_sec} chunks/s", "> 50 chunks/s")
-        table.add_row("Query Latency (P50 Median)", f"{result.query_latency_ms['p50']} ms", "< 50 ms")
-        table.add_row("Query Latency (P95 Tail)", f"{result.query_latency_ms['p95']} ms", "< 100 ms")
-        table.add_row("Query Latency (P99 Tail)", f"{result.query_latency_ms['p99']} ms", "< 150 ms")
-
-        console.print(table)
-
-    def save_json_report(self, result: BenchmarkResult, output_path: Path):
-        """Save benchmark statistics to a JSON artifact."""
-        output_path = Path(output_path)
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(result.model_dump(), f, indent=2)
-        console.print(f"[green]✓ Benchmark report successfully written to {output_path}[/green]")
+    q = Table(title="Query latency (ms)")
+    for col in ("docs", "scenario", "n", "P50", "P95", "P99", "violations"):
+        q.add_column(col, justify="right")
+    for r in report["queries"]:
+        q.add_row(
+            str(r["scale_docs"]), r["scenario"], str(r["n"]),
+            f"{r['p50_ms']:.1f}", f"{r['p95_ms']:.1f}", f"{r['p99_ms']:.1f}", str(r["filter_violations"]),
+        )
+    console.print(q)

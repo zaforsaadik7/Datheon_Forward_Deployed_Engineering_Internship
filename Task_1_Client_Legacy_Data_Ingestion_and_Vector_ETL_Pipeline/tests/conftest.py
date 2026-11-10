@@ -19,6 +19,17 @@ class FakeEmbedding(EmbeddingFunction[Documents]):
     def __init__(self, known_vectors: Optional[Dict[str, List[float]]] = None):
         self.known_vectors = known_vectors or {}
 
+    @staticmethod
+    def name() -> str:
+        return "fake-hash-embedding"
+
+    def get_config(self) -> dict:
+        return {}
+
+    @staticmethod
+    def build_from_config(config: dict) -> "FakeEmbedding":
+        return FakeEmbedding()
+
     def __call__(self, input: Documents) -> Embeddings:
         embeddings: Embeddings = []
         for text in input:

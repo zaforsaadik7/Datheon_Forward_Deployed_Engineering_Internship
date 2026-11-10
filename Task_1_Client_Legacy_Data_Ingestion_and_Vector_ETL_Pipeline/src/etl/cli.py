@@ -1,180 +1,150 @@
-"""Command-Line Interface for the Datheon Vector ETL Pipeline."""
+"""Command-line interface: ingest, query, benchmark and reset."""
 import argparse
 import sys
+import tempfile
 from pathlib import Path
+from typing import List, Optional, Sequence
+
 from rich.console import Console
 from rich.table import Table
 
-from .pipeline import VectorETLPipeline
-from .vector_store import VectorStoreManager
-from .benchmark import ETLBenchmarkRunner
-from ..config import settings
+from ..config import get_settings
+from .benchmark import HashEmbedding, render_report, run_benchmark, write_report
+from .pipeline import ingest_directory
+from .vector_store import VectorStore
 
 console = Console()
 
 
-def handle_ingest(args):
-    """Handle `ingest` subcommand."""
-    data_dir = Path(args.data_dir)
-    console.print(f"[bold cyan]📥 Ingesting legacy data from:[/bold cyan] {data_dir}")
-    console.print(f"[cyan]Target Collection:[/cyan] {args.collection} (Reset: {args.reset})")
+def _store(db_path: str, embedder: str) -> VectorStore:
+    fn = HashEmbedding() if embedder == "fake" else None
+    return VectorStore(Path(db_path), embedding_function=fn)
 
-    pipeline = VectorETLPipeline()
-    result = pipeline.run(
-        data_dir=data_dir,
-        collection_name=args.collection,
-        reset_existing=args.reset
+
+def _ints(csv: str) -> List[int]:
+    return [int(x) for x in csv.split(",") if x.strip()]
+
+
+def cmd_ingest(args: argparse.Namespace) -> int:
+    store = _store(args.db_path, args.embedder)
+    manifest = Path(args.manifest) if args.manifest else None
+    report = ingest_directory(
+        Path(args.data_dir), store,
+        manifest_path=manifest,
+        chunk_size=args.chunk_size, overlap=args.overlap, batch_size=args.batch_size,
     )
+    summary = Table(title="Ingestion summary")
+    summary.add_column("Metric")
+    summary.add_column("Value", justify="right")
+    summary.add_row("Documents ok", str(report.documents_ok))
+    summary.add_row("Documents failed", str(len(report.documents_failed)))
+    summary.add_row("Chunks written", str(report.chunks_written))
+    summary.add_row("Extract / chunk (s)", f"{report.extract_s:.2f} / {report.chunk_s:.2f}")
+    summary.add_row("Embed / write (s)", f"{report.embed_s:.2f} / {report.write_s:.2f}")
+    summary.add_row("Total (s)", f"{report.total_s:.2f}")
+    console.print(summary)
 
-    table = Table(title="✨ Ingestion Summary", style="bold blue")
-    table.add_column("Property", style="cyan")
-    table.add_column("Value", style="bold green")
-
-    table.add_row("Discovered Source Files", str(result.total_files_discovered))
-    table.add_row("Extracted Documents", str(result.total_documents_extracted))
-    table.add_row("Created Semantic Chunks", str(result.total_chunks_created))
-    table.add_row("Target Collection", result.collection_name)
-    table.add_row("Duration", f"{result.duration_seconds} s")
-    table.add_row("Throughput", f"{result.throughput_chunks_per_sec} chunks/s")
-
-    console.print(table)
-
-    if result.errors:
-        console.print("[bold red]Warnings / Errors during ingestion:[/bold red]")
-        for err in result.errors:
-            console.print(f"[red]• {err}[/red]")
-
-
-def handle_query(args):
-    """Handle `query` subcommand."""
-    store = VectorStoreManager()
-    console.print(f"[bold cyan]🔍 Semantic Search Query:[/bold cyan] '{args.query}'")
-    console.print(f"[dim]User Clearance Tier: {args.tier} | Departments: {args.department or 'All'}[/dim]\n")
-
-    depts = [d.strip() for d in args.department.split(",")] if args.department else None
-
-    results = store.query_with_rbac(
-        query_text=args.query,
-        user_tier=args.tier,
-        user_departments=depts,
-        top_k=args.top_k,
-        collection_name=args.collection
-    )
-
-    if not results:
-        console.print("[yellow]No matching documents found within your clearance boundaries.[/yellow]")
-        return
-
-    table = Table(title=f"🔎 Query Results (Top {len(results)})", style="bold green")
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Sim.", style="magenta", width=7)
-    table.add_column("Source & Metadata", style="cyan", width=32)
-    table.add_column("Content Snippet", style="white")
-
-    for idx, r in enumerate(results, start=1):
-        m = r["metadata"]
-        src = f"{m.get('source_file', 'unknown')}\nTier: {m.get('clearance_tier')} | Dept: {m.get('department')}"
-        if m.get("page_number"):
-            src += f"\nPage: {m.get('page_number')}"
-        elif m.get("row_id"):
-            src += f"\nRow: {m.get('row_id')}"
-        elif m.get("section_title"):
-            src += f"\nSec: {m.get('section_title')[:18]}"
-
-        snippet = r["text"].replace("\n", " ")[:160] + ("..." if len(r["text"]) > 160 else "")
-        table.add_row(str(idx), f"{r['similarity_score']:.3f}", src, snippet)
-
-    console.print(table)
+    if report.documents_failed:
+        failed = Table(title="Failed documents")
+        for col in ("File", "Stage", "Error"):
+            failed.add_column(col)
+        for f in report.documents_failed:
+            failed.add_row(f.file, f.stage, f.error)
+        console.print(failed)
+        return 1
+    return 0
 
 
-def handle_benchmark(args):
-    """Handle `benchmark` subcommand."""
-    data_dir = Path(args.data_dir)
-    runner = ETLBenchmarkRunner(data_dir=data_dir, collection_name="benchmark_suite")
-    results = runner.run_benchmark(query_iterations=args.iterations)
-
-    if args.output:
-        runner.save_json_report(results, Path(args.output))
-
-
-def handle_inspect(args):
-    """Inspect collection statistics and sample chunks."""
-    store = VectorStoreManager()
-    total = store.count(collection_name=args.collection)
-    console.print(f"[bold cyan]Collection:[/bold cyan] {args.collection} (Total Indexed Vectors: {total})")
-
-    if total == 0:
-        console.print("[yellow]Collection is empty. Run `python -m src.etl.cli ingest` first.[/yellow]")
-        return
-
-    coll = store.get_or_create_collection(args.collection)
-    sample = coll.peek(limit=args.limit)
-
-    table = Table(title=f"📋 Sample Vectors in '{args.collection}'", style="bold blue")
-    table.add_column("Chunk ID", style="dim")
-    table.add_column("Tier", style="yellow")
-    table.add_column("Dept", style="cyan")
-    table.add_column("Source", style="green")
-    table.add_column("Text Excerpt", style="white")
-
-    for idx, cid in enumerate(sample["ids"]):
-        meta = sample["metadatas"][idx]
-        doc = sample["documents"][idx].replace("\n", " ")[:90] + "..."
-        table.add_row(
-            cid[:22],
-            str(meta.get("clearance_tier")),
-            str(meta.get("department")),
-            str(meta.get("source_file")),
-            doc
+def cmd_query(args: argparse.Namespace) -> int:
+    store = _store(args.db_path, args.embedder)
+    try:
+        hits = store.query_by_tier_and_department(
+            args.text, args.tier, args.dept, top_k=args.top_k
         )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not hits:
+        print("No matching documents within your clearance.")
+        return 0
+    for i, h in enumerate(hits, start=1):
+        m = h.metadata
+        where = (
+            f"page {m['page_number']}" if "page_number" in m
+            else f"row {m['row_id']}" if "row_id" in m
+            else m.get("section_title", "")
+        )
+        snippet = h.text.replace("\n", " ")[:120]
+        print(f"{i}. [{h.distance:.3f}] {m['source_file']} (tier {m['clearance_tier']}, "
+              f"{m['department']}) {where}: {snippet}")
+    return 0
 
-    console.print(table)
+
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        report = run_benchmark(
+            Path(work),
+            scales=_ints(args.scales),
+            batch_sizes=_ints(args.batch_sizes),
+            queries_per_scenario=args.queries,
+            embedder=args.embedder,
+        )
+    render_report(report, console)
+    write_report(report, Path(args.out))
+    console.print(f"Report written to {args.out}")
+    return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Datheon Forward Deployed Engineering - Task 1 Vector ETL CLI"
-    )
-    subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
+def cmd_reset(args: argparse.Namespace) -> int:
+    _store(args.db_path, args.embedder).reset()
+    print(f"Collection reset at {args.db_path}")
+    return 0
 
-    # Ingest
-    ingest_p = subparsers.add_parser("ingest", help="Run ETL pipeline on corporate documents")
-    ingest_p.add_argument("--data-dir", default=str(settings.SAMPLE_DOCS_DIR), help="Directory of source documents")
-    ingest_p.add_argument("--collection", default=settings.DEFAULT_COLLECTION_NAME, help="Target ChromaDB collection")
-    ingest_p.add_argument("--reset", action="store_true", help="Reset collection before indexing")
 
-    # Query
-    query_p = subparsers.add_parser("query", help="Semantic similarity search with RBAC metadata filter")
-    query_p.add_argument("--query", required=True, help="Search query string")
-    query_p.add_argument("--tier", type=int, default=4, help="User clearance level (1 to 4)")
-    query_p.add_argument("--department", default=None, help="User department or comma-separated list")
-    query_p.add_argument("--top-k", type=int, default=5, help="Number of chunks to retrieve")
-    query_p.add_argument("--collection", default=settings.DEFAULT_COLLECTION_NAME, help="Target ChromaDB collection")
+def build_parser() -> argparse.ArgumentParser:
+    settings = get_settings()
+    parser = argparse.ArgumentParser(prog="python -m src.etl.cli", description="Vector ETL pipeline")
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    # Benchmark
-    bench_p = subparsers.add_parser("benchmark", help="Profile ingestion throughput & query latencies")
-    bench_p.add_argument("--data-dir", default=str(settings.SAMPLE_DOCS_DIR), help="Directory of source documents")
-    bench_p.add_argument("--iterations", type=int, default=25, help="Number of query benchmark rounds")
-    bench_p.add_argument("--output", default="benchmark_results.json", help="Path to save JSON benchmark report")
+    def common(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--db-path", default=str(settings.chroma_path))
+        p.add_argument("--embedder", choices=["default", "fake"], default="default")
 
-    # Inspect
-    inspect_p = subparsers.add_parser("inspect", help="Inspect collection counts and sample vectors")
-    inspect_p.add_argument("--collection", default=settings.DEFAULT_COLLECTION_NAME, help="Collection name")
-    inspect_p.add_argument("--limit", type=int, default=5, help="Number of samples to display")
+    p = sub.add_parser("ingest", help="Ingest a directory of documents")
+    p.add_argument("--data-dir", default=str(settings.data_dir / "sample_documents"))
+    p.add_argument("--manifest", default=None)
+    p.add_argument("--chunk-size", type=int, default=settings.chunk_size)
+    p.add_argument("--overlap", type=int, default=settings.chunk_overlap)
+    p.add_argument("--batch-size", type=int, default=256)
+    common(p)
+    p.set_defaults(func=cmd_ingest)
 
-    args = parser.parse_args()
+    p = sub.add_parser("query", help="Search with tier and department access control")
+    p.add_argument("text")
+    p.add_argument("--tier", type=int, required=True)
+    p.add_argument("--dept", action="append", default=None, help="repeat for several departments")
+    p.add_argument("--top-k", type=int, default=5)
+    common(p)
+    p.set_defaults(func=cmd_query)
 
-    if args.command == "ingest":
-        handle_ingest(args)
-    elif args.command == "query":
-        handle_query(args)
-    elif args.command == "benchmark":
-        handle_benchmark(args)
-    elif args.command == "inspect":
-        handle_inspect(args)
-    else:
-        parser.print_help()
+    p = sub.add_parser("benchmark", help="Run the ingestion and query benchmark")
+    p.add_argument("--scales", default="50,200,1000")
+    p.add_argument("--batch-sizes", default="32,128,512")
+    p.add_argument("--queries", type=int, default=200)
+    p.add_argument("--out", default="reports/benchmark.json")
+    p.add_argument("--embedder", choices=["default", "fake"], default="default")
+    p.set_defaults(func=cmd_benchmark)
+
+    p = sub.add_parser("reset", help="Drop and recreate the collection")
+    common(p)
+    p.set_defaults(func=cmd_reset)
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

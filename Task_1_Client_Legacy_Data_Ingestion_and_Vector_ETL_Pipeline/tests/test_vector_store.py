@@ -170,3 +170,4 @@ def test_delete_document_removes_only_that_document(tmp_store, chunk_factory):
     assert removed == 2
     assert tmp_store.count() == 1
     assert tmp_store.collection.get(ids=["c3"])["ids"] == ["c3"]
+

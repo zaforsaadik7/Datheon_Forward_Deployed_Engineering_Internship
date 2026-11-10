@@ -115,3 +115,4 @@ def test_unknown_department_rejected():
             file_type="txt",
             chunk_index=0,
         )
+

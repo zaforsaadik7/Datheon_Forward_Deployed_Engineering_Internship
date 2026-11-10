@@ -70,7 +70,7 @@ def resolve_metadata(
 ) -> ManifestEntry:
     """
     Resolve metadata for a file path.
-    1. Check manifest (exact relative path or basename).
+    1. Check manifest (exact relative path only).
     2. Fallback to filename convention with fail-closed security:
        - Missing tier defaults to DEFAULT_TIER (4).
        - Unrecognized department raises MetadataError.
@@ -78,11 +78,10 @@ def resolve_metadata(
     posix_path = Path(rel_path).as_posix()
     basename = Path(rel_path).name
 
-    # 1. Manifest lookup
+    # 1. Manifest lookup by full relative path only. Matching on the bare
+    # filename would let a file in another folder inherit someone else's tier.
     if posix_path in manifest:
         return manifest[posix_path]
-    if basename in manifest:
-        return manifest[basename]
 
     # 2. Filename fallback regex
     match = FILENAME_PATTERN.match(basename)
@@ -113,3 +112,4 @@ def resolve_metadata(
         f"Could not resolve metadata for '{rel_path}'. "
         f"File must be listed in manifest.yaml or match '<department>_*[_tierN].ext' with a valid department."
     )
+
