@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+var/
+chroma_db/
+reports/
+deploy/secrets/fde_api_keys.json
+deploy/secrets/fde_metrics_token.txt

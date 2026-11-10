@@ -1,0 +1,7 @@
+CONFIDENTIAL INTELLECTUAL PROPERTY CROSS-LICENSE AGREEMENT (TIER 4 RESTRICTED)
+
+This Exclusive Patent and Cryptographic Kernel Cross-License Agreement ('Agreement') is entered into effective October 28, 2026, by and between Enterprise Holdings Inc. ('Licensor') and Quantum Core Systems Ltd. ('Licensee').
+
+Section 1. Licensed Patent Portfolio: Licensor grants Licensee a non-transferable, field-restricted license to integrate the proprietary 'Aegis-X' zero-knowledge proof acceleration kernel covered under US Patent Nos. 11,402,891 and 11,884,109.
+
+Section 2. Upfront Fee and Running Royalties: Licensee shall pay an upfront licensing fee of $3,500,000 within ten (10) business days of execution, plus a running quarterly royalty of 4.5% on net commercial revenues derived from licensed hardware appliances, subject to an annual minimum royalty floor of $900,000.

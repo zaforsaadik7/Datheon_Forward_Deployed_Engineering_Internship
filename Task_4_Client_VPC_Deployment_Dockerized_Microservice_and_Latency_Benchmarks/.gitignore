@@ -1,0 +1,24 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+
+# Databases & local state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+data/*.db
+var/
+chroma_db/
+audit_logs/
+*.jsonl
+
+# Environment & live secret files (never commit real secrets)
+.env
+deploy/secrets/fde_api_keys.json
+deploy/secrets/fde_metrics_token.txt
+!deploy/secrets/*.example.json
+!deploy/secrets/*.example.txt

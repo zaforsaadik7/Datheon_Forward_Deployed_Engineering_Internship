@@ -1,0 +1,6 @@
+level,role_title,department,base_min_usd,base_midpoint_usd,base_max_usd,target_bonus_pct,equity_refresh_usd
+L3,Associate Software Engineer,Engineering,115000,130000,145000,10%,25000
+L4,Senior Software Engineer,Engineering,150000,168000,185000,15%,55000
+L5,Staff Software Engineer,Engineering,185000,210000,240000,20%,95000
+L6,Principal Architect,Engineering,235000,265000,295000,25%,160000
+M3,Engineering Manager,Engineering,190000,215000,245000,20%,100000

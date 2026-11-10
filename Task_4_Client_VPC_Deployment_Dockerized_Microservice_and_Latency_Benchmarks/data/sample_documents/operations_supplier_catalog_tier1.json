@@ -1,0 +1,30 @@
+{
+  "catalog_version": "2026.11",
+  "owner_department": "Operations",
+  "records": [
+    {
+      "supplier_id": "SUP-101",
+      "vendor_name": "Apex Global Logistics",
+      "tier_status": "Preferred",
+      "sla_uptime": "99.95%",
+      "primary_region": "North America",
+      "annual_contract_limit_usd": 1200000
+    },
+    {
+      "supplier_id": "SUP-102",
+      "vendor_name": "Meridian Cloud Hardware",
+      "tier_status": "Strategic",
+      "sla_uptime": "99.99%",
+      "primary_region": "Global",
+      "annual_contract_limit_usd": 4500000
+    },
+    {
+      "supplier_id": "SUP-103",
+      "vendor_name": "Vanguard Facility Services",
+      "tier_status": "Standard",
+      "sla_uptime": "99.50%",
+      "primary_region": "EMEA",
+      "annual_contract_limit_usd": 650000
+    }
+  ]
+}
