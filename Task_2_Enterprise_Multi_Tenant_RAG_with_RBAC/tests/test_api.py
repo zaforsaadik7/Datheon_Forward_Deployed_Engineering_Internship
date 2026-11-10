@@ -102,3 +102,4 @@ def test_api_authenticated_queries_enforce_rbac_and_return_citations(tmp_path: P
         c["source_file"] == "merger_acquisition_audit_tier4.pdf" and c["page_number"] == 1
         for c in body_t4["citations"]
     )
+

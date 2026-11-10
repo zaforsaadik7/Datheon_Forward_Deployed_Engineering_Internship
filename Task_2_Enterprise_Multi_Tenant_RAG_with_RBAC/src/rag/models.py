@@ -156,3 +156,4 @@ class AuditEvent(BaseModel):
     injection_detected: bool
     rbac_violation_blocked: bool
     total_ms: float
+

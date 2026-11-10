@@ -1,8 +1,7 @@
 """Cross-encoder neural reranker (ONNX Runtime) and candidate-scoped lexical BM25/phrase reranker."""
 import math
-from pathlib import Path
 import re
-from typing import Dict, List, Optional, Protocol, Sequence, Set
+from typing import Dict, List, Protocol, Sequence, Set
 from ..etl.vector_store import QueryHit
 from .models import RankedChunk
 
@@ -17,9 +16,21 @@ STOPWORDS: Set[str] = {
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:[\-_./][a-z0-9]+)*", re.IGNORECASE)
 
 
+def _stem_token(tok: str) -> str:
+    if len(tok) >= 5 and tok.isalpha() and tok.endswith("s") and not tok.endswith(("ss", "us", "is")):
+        return tok[:-1]
+    return tok
+
+
 def _tokenize(text: str) -> List[str]:
-    raw = [t.lower() for t in TOKEN_RE.findall(text)]
-    return [t for t in raw if t not in STOPWORDS and len(t) > 1 or t.isdigit()]
+    raw = [_stem_token(t.lower()) for t in TOKEN_RE.findall(text)]
+    return [t for t in raw if t not in STOPWORDS and (len(t) > 1 or t.isdigit())]
+
+
+def _is_specific_identifier(token: str) -> bool:
+    return (any(ch in token for ch in "-_./") and len(token) >= 4) or (
+        any(ch.isdigit() for ch in token) and any(ch.isalpha() for ch in token)
+    )
 
 
 class Reranker(Protocol):
@@ -55,6 +66,7 @@ class LexicalReranker:
             return [0.0 for _ in candidates]
 
         q_unique = list(dict.fromkeys(q_tokens))
+        q_specific_ids = [qt for qt in q_unique if _is_specific_identifier(qt)]
         q_bigrams = {
             f"{q_tokens[i]} {q_tokens[i + 1]}" for i in range(len(q_tokens) - 1)
         }
@@ -71,10 +83,11 @@ class LexicalReranker:
         raw_bm25: List[float] = []
         coverages: List[float] = []
         phrase_bonuses: List[float] = []
+        matched_counts: List[int] = []
+        matched_specific_counts: List[int] = []
 
         for idx, hit in enumerate(candidates):
             dt = doc_tokens_list[idx]
-            dt_set = set(dt)
             dl = len(dt)
             tf_map: Dict[str, int] = {}
             for tok in dt:
@@ -82,15 +95,16 @@ class LexicalReranker:
 
             bm25_val = 0.0
             matched_q = 0
+            matched_spec = 0
             code_id_bonus = 0.0
 
             for qt in q_unique:
                 tf = tf_map.get(qt, 0)
                 if tf > 0:
                     matched_q += 1
-                    # Boost exact technical identifiers (hyphenated codes, CIDRs, numbers)
-                    if any(ch in qt for ch in "-_./") or any(ch.isdigit() for ch in qt):
-                        code_id_bonus += 0.18
+                    if _is_specific_identifier(qt):
+                        matched_spec += 1
+                        code_id_bonus += 0.22
                     idf = math.log(1.0 + (n_docs - df[qt] + 0.5) / (df[qt] + 0.5))
                     denom = tf + self.k1 * (1.0 - self.b + self.b * (dl / avgdl))
                     bm25_val += idf * ((tf * (self.k1 + 1.0)) / max(1e-9, denom))
@@ -98,6 +112,8 @@ class LexicalReranker:
             raw_bm25.append(bm25_val)
             cov = matched_q / float(len(q_unique))
             coverages.append(cov)
+            matched_counts.append(matched_q)
+            matched_specific_counts.append(matched_spec)
 
             doc_bigrams = {f"{dt[i]} {dt[i + 1]}" for i in range(len(dt) - 1)}
             bg_hits = len(q_bigrams & doc_bigrams)
@@ -110,14 +126,26 @@ class LexicalReranker:
         for idx, hit in enumerate(candidates):
             vec_sim = max(0.0, min(1.0, 1.0 - float(hit.distance)))
             cov = coverages[idx]
-            if cov == 0.0:
-                # Zero lexical overlap with query terms: cap score below default abstention threshold
+            matched_q = matched_counts[idx]
+            matched_spec = matched_specific_counts[idx]
+
+            # If the query specifies concrete identifiers (like FIN-Q3-002 or vpc-prod-compute)
+            # and the candidate matches NONE of them, or if overall query token coverage is
+            # below threshold, cap below min_score so off-topic chunks are rejected.
+            if q_specific_ids and matched_spec == 0 and cov < 0.50:
+                scores.append(round(0.15 * vec_sim, 6))
+                continue
+            if cov == 0.0 or (len(q_unique) >= 3 and matched_q <= 1 and matched_spec == 0):
                 scores.append(round(0.15 * vec_sim, 6))
                 continue
 
             bm25_norm = (raw_bm25[idx] / max_bm25) if max_bm25 > 0.0 else cov
-            lexical_strength = min(1.0, 0.55 * max(bm25_norm, cov) + 0.45 * min(1.0, cov + phrase_bonuses[idx]))
-            combined = min(1.0, 0.30 * vec_sim + 0.70 * lexical_strength)
+            bm25_grounded = bm25_norm * min(1.0, cov * 1.5)
+            lexical_strength = min(
+                1.0,
+                0.50 * max(bm25_grounded, cov) + 0.50 * min(1.0, cov + phrase_bonuses[idx]),
+            )
+            combined = min(1.0, 0.25 * vec_sim + 0.75 * lexical_strength)
             scores.append(round(combined, 6))
 
         return scores
@@ -225,11 +253,13 @@ class OnnxCrossEncoder:
 
         ranked: List[RankedChunk] = []
         for idx, hit in enumerate(candidates):
-            logit = float(logits[idx])
-            # Sigmoid over MS-MARCO cross-encoder relevance logit
-            ce_prob = 1.0 / (1.0 + math.exp(-max(-20.0, min(20.0, logit))))
             lex_score = lex_scores[idx]
-            score = round(0.75 * ce_prob + 0.25 * lex_score, 6)
+            if lex_score < 0.15:
+                # Candidate lacks lexical grounding for query terms/identifiers
+                continue
+            logit = float(logits[idx])
+            ce_prob = 1.0 / (1.0 + math.exp(-max(-20.0, min(20.0, logit))))
+            score = round(0.70 * ce_prob + 0.30 * lex_score, 6)
             if score < min_score:
                 continue
             vec_sim = max(0.0, min(1.0, 1.0 - float(hit.distance)))

@@ -70,3 +70,4 @@ def test_synthesizer_handles_pipe_delimited_csv_records_and_row_citations():
     assert "185000" in answer_text and "240000" in answer_text
     assert "[hr_compensation_bands_tier2.csv, row 3]" in answer_text
     assert citations[0].row_id == 3
+

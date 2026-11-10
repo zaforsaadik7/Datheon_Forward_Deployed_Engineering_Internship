@@ -163,3 +163,4 @@ def ingest_directory(
         write_s=write_s,
         total_s=total_s,
     )
+

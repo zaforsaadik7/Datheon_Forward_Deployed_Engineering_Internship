@@ -77,3 +77,4 @@ def test_guardrail_rejects_fabricated_numbers_entities_and_out_of_range_markers(
     assert 5 in report.invalid_marker_indices
     assert any("24" in n for n in report.hallucinated_numbers)
     assert "FIN-Q3-999" in report.hallucinated_entities
+

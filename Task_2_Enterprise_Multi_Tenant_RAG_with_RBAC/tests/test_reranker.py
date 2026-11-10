@@ -82,3 +82,4 @@ def test_onnx_cross_encoder_scores_query_document_pairs():
     assert len(ranked) >= 1
     assert ranked[0].chunk_id == "c_right"
     assert ranked[0].rerank_score > 0.5
+

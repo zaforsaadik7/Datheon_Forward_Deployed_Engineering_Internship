@@ -113,3 +113,4 @@ def resolve_metadata(
         f"Could not resolve metadata for '{rel_path}'. "
         f"File must be listed in manifest.yaml or match '<department>_*[_tierN].ext' with a valid department."
     )
+

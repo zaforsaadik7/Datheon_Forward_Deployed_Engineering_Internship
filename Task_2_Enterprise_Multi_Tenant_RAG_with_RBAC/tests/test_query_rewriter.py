@@ -35,3 +35,4 @@ def test_rewriter_advisory_injection_does_not_false_positive_on_root_cause():
 def test_rewriter_rejects_empty_query():
     with pytest.raises(ValueError, match="Query must not be empty"):
         rewrite_query("   ")
+

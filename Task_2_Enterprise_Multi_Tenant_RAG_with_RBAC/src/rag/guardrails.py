@@ -5,7 +5,7 @@ from typing import List, Sequence, Set, Tuple
 from .models import DraftAnswer, GuardrailReport, RankedChunk
 from .reranker import _tokenize
 
-MARKER_RE = re.compile(r"\[\d+\]")
+MARKER_RE = re.compile(r"(?<![A-Za-z0-9_])\[[1-9]\d*\]")
 
 # Mask out code identifiers and CIDR blocks before standalone number extraction
 CODE_OR_CIDR_MASK_RE = re.compile(

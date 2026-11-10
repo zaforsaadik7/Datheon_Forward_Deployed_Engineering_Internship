@@ -72,3 +72,4 @@ def test_vector_store_tier1_public_rule_and_tenant_isolation(tmp_store, chunk_fa
     )
     hit_ids = {h.chunk_id for h in hits}
     assert hit_ids == {"c_t1_ops", "c_t2_eng"}
+

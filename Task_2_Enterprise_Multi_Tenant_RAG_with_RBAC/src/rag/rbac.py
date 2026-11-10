@@ -245,3 +245,4 @@ class AuditLogger:
         )
         self._events.append(event)
         return event
+

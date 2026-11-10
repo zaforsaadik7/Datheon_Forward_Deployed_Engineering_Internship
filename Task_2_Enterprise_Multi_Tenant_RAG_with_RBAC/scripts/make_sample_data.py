@@ -255,3 +255,4 @@ def generate_sample_corpus(out_dir: Path | None = None) -> Path:
 if __name__ == "__main__":
     out = generate_sample_corpus()
     print(f"Generated sample corpus in {out}")
+

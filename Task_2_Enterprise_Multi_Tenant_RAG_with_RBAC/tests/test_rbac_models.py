@@ -161,3 +161,4 @@ def test_audit_logger_records_structured_events_without_restricted_existence_lea
     assert ev.tenant_id == "acme_corp"
     assert ev.abstained is True
     assert len(audit.events) == 1
+

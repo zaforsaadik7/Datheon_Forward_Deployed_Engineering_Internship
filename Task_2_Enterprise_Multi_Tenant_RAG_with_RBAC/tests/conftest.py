@@ -148,3 +148,4 @@ def make_pdf() -> Callable[[Path, List[str]], Path]:
         return path
 
     return _create
+

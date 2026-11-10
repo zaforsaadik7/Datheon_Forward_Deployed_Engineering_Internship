@@ -117,3 +117,4 @@ def rewrite_query(raw_query: str) -> RewriteResult:
         expanded_terms=tuple(all_expanded),
         injection_detected=injection_detected,
     )
+

@@ -24,9 +24,13 @@ def _split_chunk_units(text: str) -> List[str]:
     if not stripped:
         return []
 
-    # Keep pipe-delimited CSV/JSON record rows intact as a single unit
+    # Keep pipe-delimited CSV records or newline key-value JSON records intact as a single unit
     if " | " in stripped and stripped.count("|") >= 2:
         return [re.sub(r"\s+", " ", stripped)]
+
+    lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
+    if len(lines) >= 2 and all(re.match(r"^[a-zA-Z0-9_.\[\]\-]+:\s+", ln) for ln in lines):
+        return [" | ".join(lines)]
 
     raw_parts = SENTENCE_SPLIT_RE.split(stripped)
     units: List[str] = []
@@ -147,7 +151,7 @@ def render_cited_answer(
                 if tag not in tags:
                     tags.append(tag)
 
-        clean_stmt = re.sub(r"\[\d+\]", "", stmt.text).strip()
+        clean_stmt = re.sub(r"(?<![A-Za-z0-9_])\[[1-9]\d*\]", "", stmt.text).strip()
         if tags:
             rendered_parts.append(f"{clean_stmt} {' '.join(tags)}")
         else:

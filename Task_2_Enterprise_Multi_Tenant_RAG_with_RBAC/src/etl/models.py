@@ -142,3 +142,4 @@ class IngestReport(BaseModel):
     embed_s: float
     write_s: float
     total_s: float
+
